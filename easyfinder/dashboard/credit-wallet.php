@@ -34,7 +34,14 @@ if (isset($_POST['generate_monnify'])) {
             $monnify_msg = 'Monnify account ready! Details: ' . $result['account_details'];
             $Auth = $UserAuth->GetUserId($Auth->email);
         } else {
-            $monnify_err = 'Could not create Monnify account: ' . ($result['message'] ?? 'Unknown error');
+            $err_msg = strtolower($result['message'] ?? '');
+            // Monnify rejected the BVN — ask user to correct it
+            if (strpos($err_msg, 'bvn') !== false || strpos($err_msg, 'invalid') !== false) {
+                $need_bvn_form = true;
+                $monnify_err  = 'The BVN on file was rejected. Please enter your correct 11-digit BVN below.';
+            } else {
+                $monnify_err = 'Could not create Monnify account: ' . ($result['message'] ?? 'Unknown error');
+            }
         }
     }
 }
