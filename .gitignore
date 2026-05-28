@@ -1,0 +1,21 @@
+# Sensitive files - DO NOT commit real credentials
+easyfinder/app/DB/db_credentials.ini
+
+# Logs and temp
+*.log
+error_log
+error_log.php
+
+# SQL dumps (large - use releases instead)
+*.sql
+
+# Zip files
+*.zip
+*.phar
+
+# Vendor (install via composer)
+easyfinder/vendor/
+
+# OS
+.DS_Store
+Thumbs.db
