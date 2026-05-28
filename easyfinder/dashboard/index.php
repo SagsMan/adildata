@@ -161,38 +161,44 @@ if (empty($Auth->monnify_account_details)) {
                                             style="font-weight: bold; font-size: 22px; font-family: time roman;">
                                             Auto Funding </h4>
                                             <p>Kindly make a bank transfer to this account to fund your wallet</p>
-                                             <?php 
-                                            
-                                            $conn = mysqli_connect("localhost", "adiliqgs_adildata", "adildata2026", "adiliqgs_adildata");
-                                            $useraa =  $_SESSION['Login_User'];
-                                            
-                                            $q = mysqli_query($conn, "SELECT * FROM users_tbl WHERE email = '$useraa'");
-                                            
-                                            if(mysqli_num_rows($q)>0){
-                                                $row = mysqli_fetch_array($q);
-                                                
-                                                if(empty($row['acc_no'])){
-                                                include_once("generateBankAccount.php");
-                                                
-                                                $result = generateBankAccount($row['email'], $row['sname'], $row['phone']);
-
-                                                echo "<a href='' class='btn btn-success btn-mini'>Refresh Account</a>";
-                                                    
-                                                }
-                                                
-                                            ?>
-                                        <div class="mt-4" style="text-align: center;">
-                                            <h4 style="font-weight: bold; font-size: 18px;">Account Details</h4>
-                                            <p><strong>Account Number: </strong><?php echo $row['acc_no']; ?></p>
-                                            <p><strong>Account Name: </strong><?php echo $row['acc_name']; ?></p>
-                                            <p><strong>Bank: </strong><?php echo $row['bank_name']; ?></p>
+                                        <?php
+                                        $mon_parts = !empty($Auth->monnify_account_details)
+                                            ? array_map('trim', explode(',', $Auth->monnify_account_details))
+                                            : [];
+                                        if (!empty($mon_parts)):
+                                            foreach ($mon_parts as $acct):
+                                                $p = explode(' - ', $acct);
+                                                $b_name = $p[0] ?? '';
+                                                $b_no   = $p[1] ?? '';
+                                                $b_acct = $p[2] ?? '';
+                                        ?>
+                                        <div class="mt-3" style="text-align:center;">
+                                            <p style="color:#10d596;font-weight:bold;margin-bottom:2px;"><?= htmlspecialchars($b_name) ?></p>
+                                            <h3 style="font-weight:bold;font-size:24px;margin:0;"><?= htmlspecialchars($b_no) ?></h3>
+                                            <p style="font-size:13px;color:#666;"><?= htmlspecialchars($b_acct) ?></p>
                                         </div>
                                         <?php
-                                        
-                                            }else{
-                                                echo "";
-                                            }
-                                            ?>
+                                            endforeach;
+                                        else:
+                                        ?>
+                                        <div class="mt-3 text-center">
+                                            <p class="text-muted">No account yet.</p>
+                                            <a href="credit-wallet"
+                                               class="btn btn-success btn-sm"
+                                               style="background:#10d596;border-color:#10d596;">
+                                               <i class="fa fa-university mr-1"></i> Generate Account
+                                            </a>
+                                        </div>
+                                        <?php endif; ?>
+                                        <div class="mt-2" style="text-align:center;">
+                                            <a href="verify-monnify"
+                                               style="color:#10d596;font-size:13px;">
+                                               <i class="fa fa-refresh mr-1"></i>Verify Recent Payment
+                                            </a>
+                                        </div>
+                                        <b style="color:red;font-size:11px;display:block;margin-top:8px;text-align:center;">
+                                            NOTE: &#8358;50 charge on transfers below &#8358;10,000 &bull; &#8358;100 charge on &#8358;10,000+
+                                        </b>
                                     </div>
                                 </div>
                             </div>
