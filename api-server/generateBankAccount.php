@@ -48,8 +48,6 @@ function generateBankAccount($email, $name, $phone){
         "businessId" => $businessId
     ];
     
-    echo json_encode($data);
-
     $headers = [
         "Authorization: Bearer $apiSecret",
         "Content-Type: application/json",
