@@ -6,27 +6,36 @@ $URL_NAME = 'dashboard/credit-wallet';
 require_once '../inc/accessbility_controller.inc.php';
 include '../inc/payment_api_code.php';
 // ── Monnify: Generate Reserved Account ────────────────────────────────────────
-$monnify_msg = null;
-$monnify_err = null;
-// Auto-generate Monnify account on page load if user doesn't have one yet
-$fresh_check = $UserAuth->GetUserId($Auth->email);
-if (empty($fresh_check->monnify_account_details)) {
-    $auto_result = $UserAuth->createMonnifyAccount($Auth);
-    if ($auto_result['success']) {
-        $monnify_msg = 'Monnify account activated! Account: ' . $auto_result['account_details'];
-        $Auth = $UserAuth->GetUserId($Auth->email);
-    }
-}
+$monnify_msg     = null;
+$monnify_err     = null;
+$need_bvn_form   = false;
 
-// Also handle manual button press
+// Handle manual generate button — collect BVN first if not on record
 if (isset($_POST['generate_monnify'])) {
     $Auth = $UserAuth->GetUserId($Auth->email);
-    $result = $UserAuth->createMonnifyAccount($Auth);
-    if ($result['success']) {
-        $monnify_msg = 'Monnify account ready! Details: ' . $result['account_details'];
-        $Auth = $UserAuth->GetUserId($Auth->email);
+    // Save BVN/NIN if submitted
+    if (!empty(trim($_POST['bvn'] ?? ''))) {
+        $bvn_clean = preg_replace('/\D/', '', trim($_POST['bvn']));
+        if (strlen($bvn_clean) === 11) {
+            $conn_bvn = mysqli_connect('localhost','adiliqgs_adildata','adildata2026','adiliqgs_adildata');
+            $es  = mysqli_real_escape_string($conn_bvn, $Auth->email);
+            $bvs = mysqli_real_escape_string($conn_bvn, $bvn_clean);
+            mysqli_query($conn_bvn, "UPDATE users_tbl SET bvn='$bvs' WHERE email='$es'");
+            mysqli_close($conn_bvn);
+            $Auth = $UserAuth->GetUserId($Auth->email);
+        }
+    }
+    // If still no BVN/NIN, show collection form
+    if (empty($Auth->bvn) && empty($Auth->nin)) {
+        $need_bvn_form = true;
     } else {
-        $monnify_err = 'Could not create Monnify account: ' . ($result['message'] ?? 'Unknown error');
+        $result = $UserAuth->createMonnifyAccount($Auth);
+        if ($result['success']) {
+            $monnify_msg = 'Monnify account ready! Details: ' . $result['account_details'];
+            $Auth = $UserAuth->GetUserId($Auth->email);
+        } else {
+            $monnify_err = 'Could not create Monnify account: ' . ($result['message'] ?? 'Unknown error');
+        }
     }
 }
 
@@ -295,6 +304,25 @@ if (isset($_POST['generate_monnify'])) {
                                                 <i class="fa fa-refresh mr-1"></i> Balance not updated? Verify Payment
                                             </a>
                                         </div>
+                                    <?php elseif ($need_bvn_form): ?>
+                                        <div class="alert alert-warning mb-3">
+                                            <i class="fa fa-id-card mr-1"></i>
+                                            <strong>BVN Required:</strong> To generate your dedicated bank account, please enter your 11-digit BVN (Bank Verification Number).
+                                        </div>
+                                        <form method="POST" action="">
+                                            <div class="form-group">
+                                                <label><strong>Your BVN (11 digits)</strong></label>
+                                                <input type="text" name="bvn" class="form-control" maxlength="11"
+                                                    pattern="\d{11}" placeholder="Enter your 11-digit BVN"
+                                                    required style="max-width:280px;">
+                                                <small class="form-text text-muted">Your BVN is used only to verify your identity with Monnify. Dial *565*0# to get your BVN.</small>
+                                            </div>
+                                            <button type="submit" name="generate_monnify" value="1"
+                                                class="btn btn-success"
+                                                style="background:#10d596!important;border-color:#10d596!important;">
+                                                <i class="fa fa-university mr-1"></i> Generate Monnify Account
+                                            </button>
+                                        </form>
                                     <?php else: ?>
                                         <p class="mb-3">Your permanent bank account number is being set up. This usually completes automatically.</p>
                                         <form method="POST" action="">
