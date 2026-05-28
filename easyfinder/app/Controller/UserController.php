@@ -104,10 +104,18 @@ class UserController extends C_base
                 "getAllAvailableBanks" => true,
             ];
 
+            // Validate BVN/NIN — must be exactly 11 digits
             if (!empty($auth->bvn)) {
-                $account_data['bvn'] = $auth->bvn;
-            } elseif (!empty($auth->nin)) {
-                $account_data['nin'] = $auth->nin;
+                $bvn_clean = preg_replace('/\D/', '', $auth->bvn);
+                if (strlen($bvn_clean) === 11) {
+                    $account_data['bvn'] = $bvn_clean;
+                }
+            }
+            if (!empty($auth->nin) && !isset($account_data['bvn'])) {
+                $nin_clean = preg_replace('/\D/', '', $auth->nin);
+                if (strlen($nin_clean) === 11) {
+                    $account_data['nin'] = $nin_clean;
+                }
             }
 
             $ch = curl_init();
