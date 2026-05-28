@@ -1,0 +1,19 @@
+# Adildata — Root .htaccess
+Options -Indexes
+DirectoryIndex index.php index.html
+
+<IfModule mod_headers.c>
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+RewriteEngine On
+
+# Serve static files and directories directly
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Route bare root to the dashboard login
+RewriteRule ^$ easyfinder/dashboard/login [R=302,L]
