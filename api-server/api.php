@@ -487,6 +487,14 @@ case 'generate_monnify':
 
     $res = json_decode($resp, true);
     if (empty($res['requestSuccessful']) || empty($res['responseBody']['accounts'])) {
+        $monnify_msg = strtolower($res['responseMessage'] ?? '');
+        if (strpos($monnify_msg, 'bvn') !== false || strpos($monnify_msg, 'invalid') !== false) {
+            // Clear the invalid BVN so user can re-enter
+            mysqli_query($conn, "UPDATE users_tbl SET bvn='' WHERE email='$em'");
+            http_response_code(422);
+            echo json_encode(['status' => 'error', 'message' => 'bvn_invalid: Your BVN was rejected. Please provide your correct 11-digit BVN.', 'error_code' => 'bvn_invalid']);
+            exit;
+        }
         api_error('Monnify account creation failed: ' . ($res['responseMessage'] ?? 'Unknown error'));
     }
 
