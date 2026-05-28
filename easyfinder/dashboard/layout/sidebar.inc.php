@@ -74,6 +74,16 @@
 
 
 
+             <li><a href="<?php echo SITE_URL . 'easyfinder/dashboard/referral' ?>" class="ai-icon" aria-expanded="false">
+                     <i class="flaticon-381-star-1"></i>
+                     <span class="nav-text">Referral & Earnings</span>
+                 </a>
+             </li>
+             <li><a href="<?php echo SITE_URL . 'easyfinder/dashboard/verify-monnify' ?>" class="ai-icon" aria-expanded="false">
+                     <i class="flaticon-381-check-circle"></i>
+                     <span class="nav-text">Verify Payment</span>
+                 </a>
+             </li>
          </ul>
 
          <div class="add-menu-sidebar">
