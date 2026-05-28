@@ -5,11 +5,39 @@ $PAGE_TITLE = 'Fund Your Wallet ';
 $URL_NAME = 'dashboard/credit-wallet';
 require_once '../inc/accessbility_controller.inc.php';
 include '../inc/payment_api_code.php';
+// ── Monnify: Generate Reserved Account ────────────────────────────────────────
+$monnify_msg = null;
+$monnify_err = null;
+if (isset($_POST['generate_monnify'])) {
+    if (!empty(trim($_POST['bvn'] ?? ''))) {
+        $bvn_clean = preg_replace('/\D/', '', trim($_POST['bvn']));
+        if (strlen($bvn_clean) === 11) {
+            $conn_tmp = mysqli_connect('localhost','adiliqgs_adildata','adildata2026','adiliqgs_adildata');
+            if ($conn_tmp) {
+                $es = mysqli_real_escape_string($conn_tmp, $Auth->email);
+                $bvn_s = mysqli_real_escape_string($conn_tmp, $bvn_clean);
+                mysqli_query($conn_tmp, "UPDATE users_tbl SET bvn='$bvn_s' WHERE email='$es'");
+                mysqli_close($conn_tmp);
+                $Auth->bvn = $bvn_clean;
+            }
+        }
+    }
+    // Re-fetch to pick up saved BVN
+    $Auth = $UserAuth->GetUserId($Auth->email);
+    $result = $UserAuth->createMonnifyAccount($Auth);
+    if ($result['success']) {
+        $monnify_msg = 'Monnify account created! Details: ' . $result['account_details'];
+        $Auth = $UserAuth->GetUserId($Auth->email);
+    } else {
+        $monnify_err = 'Could not create Monnify account: ' . ($result['message'] ?? 'Unknown error');
+    }
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
 
-<head><meta charset="utf-8">
+<head>
     <?php require_once 'layout/header-propt.inc.php'; ?>
 
     <title><?= $PAGE_TITLE . ' | ' . SITE_TITLE ?> </title>
@@ -228,12 +256,65 @@ include '../inc/payment_api_code.php';
                                     </form>
 
 
+
+                                </div><!-- end PayStack card-body -->
+                                </div><!-- end PayStack card -->
+
+                                <?php if (!empty($monnify_msg)): ?>
+                                <div class="alert alert-success mt-3"><i class="fa fa-check-circle mr-2"></i><?= htmlspecialchars($monnify_msg) ?></div>
+                                <?php endif; ?>
+                                <?php if (!empty($monnify_err)): ?>
+                                <div class="alert alert-danger mt-3"><i class="fa fa-exclamation-circle mr-2"></i><?= htmlspecialchars($monnify_err) ?></div>
+                                <?php endif; ?>
+
+                                <!-- ══ MONNIFY RESERVED ACCOUNT ═══════════════════════════════════════ -->
+                                <div class="card mt-3">
+                                    <div class="card-header" style="background:#10d596;">
+                                        <h4 class="card-title mb-0" style="color:#fff;">
+                                            <i class="fa fa-university mr-2"></i>Fund via Bank Transfer (Monnify)
+                                        </h4>
+                                    </div>
+                                    <div class="card-body">
+                                    <?php
+                                        $fresh_auth = $UserAuth->GetUserId($Auth->email);
+                                        $mon_details = $fresh_auth->monnify_account_details ?? '';
+                                    ?>
+                                    <?php if (!empty($mon_details)): ?>
+                                        <div class="alert alert-info mb-3">
+                                            <h5 class="mb-2"><i class="fa fa-check-circle mr-1"></i> Your Dedicated Monnify Accounts</h5>
+                                            <p class="mb-2 text-muted">Send any amount to the accounts below — your wallet is credited automatically.</p>
+                                            <?php foreach (explode(', ', $mon_details) as $acct): ?>
+                                            <div class="p-2 mb-2" style="background:#f8f9fa;border-radius:6px;font-weight:bold;">
+                                                <?= htmlspecialchars(trim($acct)) ?>
+                                            </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php else: ?>
+                                        <p class="mb-3">Generate a permanent bank account number for instant wallet funding via Monnify.</p>
+                                        <?php if (empty($fresh_auth->bvn) && empty($fresh_auth->nin)): ?>
+                                        <div class="alert alert-warning"><i class="fa fa-exclamation-triangle mr-1"></i>
+                                            Monnify requires your BVN (CBN compliance). Enter it below to activate.
+                                        </div>
+                                        <?php endif; ?>
+                                        <form method="POST" action="">
+                                            <?php if (empty($fresh_auth->bvn) && empty($fresh_auth->nin)): ?>
+                                            <div class="form-group">
+                                                <label><strong>Your BVN:</strong></label>
+                                                <input type="text" name="bvn" class="form-control" maxlength="11"
+                                                    placeholder="11-digit BVN" pattern="[0-9]{11}" required>
+                                                <small class="text-muted">Kept private — used only for bank compliance.</small>
+                                            </div>
+                                            <?php endif; ?>
+                                            <button type="submit" name="generate_monnify" value="1"
+                                                class="btn btn-success"
+                                                style="background:#10d596!important;border-color:#10d596!important;">
+                                                <i class="fa fa-university mr-1"></i> Generate Monnify Account
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+                                    </div>
                                 </div>
-
-
-
-
-
+                                <!-- ══ END MONNIFY ══════════════════════════════════════════════════════ -->
 
 
                                 <?php
