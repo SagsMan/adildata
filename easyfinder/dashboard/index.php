@@ -163,7 +163,7 @@ if (empty($Auth->monnify_account_details)) {
                                             <p>Kindly make a bank transfer to this account to fund your wallet</p>
                                              <?php 
                                             
-                                            $conn = mysqli_connect("localhost", "eduowrav_abz", "uCq.4WRLNOsT", "eduowrav_adildata");
+                                            $conn = mysqli_connect("localhost", "adiliqgs_adildata", "adildata2026", "adiliqgs_adildata");
                                             $useraa =  $_SESSION['Login_User'];
                                             
                                             $q = mysqli_query($conn, "SELECT * FROM users_tbl WHERE email = '$useraa'");
