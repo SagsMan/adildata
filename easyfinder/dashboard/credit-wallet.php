@@ -8,25 +8,22 @@ include '../inc/payment_api_code.php';
 // ── Monnify: Generate Reserved Account ────────────────────────────────────────
 $monnify_msg = null;
 $monnify_err = null;
-if (isset($_POST['generate_monnify'])) {
-    if (!empty(trim($_POST['bvn'] ?? ''))) {
-        $bvn_clean = preg_replace('/\D/', '', trim($_POST['bvn']));
-        if (strlen($bvn_clean) === 11) {
-            $conn_tmp = mysqli_connect('localhost','adiliqgs_adildata','adildata2026','adiliqgs_adildata');
-            if ($conn_tmp) {
-                $es = mysqli_real_escape_string($conn_tmp, $Auth->email);
-                $bvn_s = mysqli_real_escape_string($conn_tmp, $bvn_clean);
-                mysqli_query($conn_tmp, "UPDATE users_tbl SET bvn='$bvn_s' WHERE email='$es'");
-                mysqli_close($conn_tmp);
-                $Auth->bvn = $bvn_clean;
-            }
-        }
+// Auto-generate Monnify account on page load if user doesn't have one yet
+$fresh_check = $UserAuth->GetUserId($Auth->email);
+if (empty($fresh_check->monnify_account_details)) {
+    $auto_result = $UserAuth->createMonnifyAccount($Auth);
+    if ($auto_result['success']) {
+        $monnify_msg = 'Monnify account activated! Account: ' . $auto_result['account_details'];
+        $Auth = $UserAuth->GetUserId($Auth->email);
     }
-    // Re-fetch to pick up saved BVN
+}
+
+// Also handle manual button press
+if (isset($_POST['generate_monnify'])) {
     $Auth = $UserAuth->GetUserId($Auth->email);
     $result = $UserAuth->createMonnifyAccount($Auth);
     if ($result['success']) {
-        $monnify_msg = 'Monnify account created! Details: ' . $result['account_details'];
+        $monnify_msg = 'Monnify account ready! Details: ' . $result['account_details'];
         $Auth = $UserAuth->GetUserId($Auth->email);
     } else {
         $monnify_err = 'Could not create Monnify account: ' . ($result['message'] ?? 'Unknown error');
@@ -283,28 +280,24 @@ if (isset($_POST['generate_monnify'])) {
                                         <div class="alert alert-info mb-3">
                                             <h5 class="mb-2"><i class="fa fa-check-circle mr-1"></i> Your Dedicated Monnify Accounts</h5>
                                             <p class="mb-2 text-muted">Send any amount to the accounts below — your wallet is credited automatically.</p>
-                                            <?php foreach (explode(', ', $mon_details) as $acct): ?>
-                                            <div class="p-2 mb-2" style="background:#f8f9fa;border-radius:6px;font-weight:bold;">
-                                                <?= htmlspecialchars(trim($acct)) ?>
+                                            <?php foreach (explode(', ', $mon_details) as $acct): 
+                                                $prt = explode(' - ', trim($acct));
+                                            ?>
+                                            <div class="p-2 mb-2" style="background:#f8f9fa;border-radius:6px;">
+                                                <span style="color:#10d596;font-weight:bold;"><?= htmlspecialchars($prt[0] ?? '') ?></span>
+                                                &nbsp;|&nbsp;
+                                                <strong style="font-size:18px;"><?= htmlspecialchars($prt[1] ?? '') ?></strong>
+                                                &nbsp;&mdash;&nbsp;
+                                                <span class="text-muted"><?= htmlspecialchars($prt[2] ?? '') ?></span>
                                             </div>
                                             <?php endforeach; ?>
+                                            <a href="verify-monnify" class="btn btn-outline-success btn-sm mt-2">
+                                                <i class="fa fa-refresh mr-1"></i> Balance not updated? Verify Payment
+                                            </a>
                                         </div>
                                     <?php else: ?>
-                                        <p class="mb-3">Generate a permanent bank account number for instant wallet funding via Monnify.</p>
-                                        <?php if (empty($fresh_auth->bvn) && empty($fresh_auth->nin)): ?>
-                                        <div class="alert alert-warning"><i class="fa fa-exclamation-triangle mr-1"></i>
-                                            Monnify requires your BVN (CBN compliance). Enter it below to activate.
-                                        </div>
-                                        <?php endif; ?>
+                                        <p class="mb-3">Your permanent bank account number is being set up. This usually completes automatically.</p>
                                         <form method="POST" action="">
-                                            <?php if (empty($fresh_auth->bvn) && empty($fresh_auth->nin)): ?>
-                                            <div class="form-group">
-                                                <label><strong>Your BVN:</strong></label>
-                                                <input type="text" name="bvn" class="form-control" maxlength="11"
-                                                    placeholder="11-digit BVN" pattern="[0-9]{11}" required>
-                                                <small class="text-muted">Kept private — used only for bank compliance.</small>
-                                            </div>
-                                            <?php endif; ?>
                                             <button type="submit" name="generate_monnify" value="1"
                                                 class="btn btn-success"
                                                 style="background:#10d596!important;border-color:#10d596!important;">
