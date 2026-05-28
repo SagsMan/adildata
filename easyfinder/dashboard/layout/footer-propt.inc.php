@@ -120,5 +120,31 @@
         <?php endforeach ?>
     <?php endif ?>
 
-
-
+<!-- Adildata: Preloader failsafe — hides after 2.5s max regardless of JS errors -->
+<style>
+#preloader{-webkit-animation:adil-hide 0s 3s forwards;animation:adil-hide 0s 3s forwards;}
+@-webkit-keyframes adil-hide{to{display:none;opacity:0;visibility:hidden;}}
+@keyframes adil-hide{to{display:none;opacity:0;visibility:hidden;}}
+</style>
+<script>
+(function(){
+  function killLoader(){
+    var pre=document.getElementById('preloader');
+    var mw=document.getElementById('main-wrapper');
+    if(pre){pre.style.display='none';}
+    if(mw&&!mw.classList.contains('show')){mw.classList.add('show');}
+  }
+  // Immediate attempt after DOM ready
+  document.addEventListener('DOMContentLoaded',function(){setTimeout(killLoader,600);});
+  // Hard fallback: force hide after 2.5s no matter what
+  setTimeout(killLoader,2500);
+  // Also hook into jQuery if available
+  if(typeof jQuery!=='undefined'){
+    jQuery(window).on('load',function(){setTimeout(killLoader,300);});
+  } else {
+    document.addEventListener('DOMContentLoaded',function(){
+      var t=setInterval(function(){if(typeof jQuery!=='undefined'){clearInterval(t);jQuery(window).on('load',function(){setTimeout(killLoader,300);});}},100);
+    });
+  }
+})();
+</script>

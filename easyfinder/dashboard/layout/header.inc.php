@@ -2,10 +2,10 @@
             Nav header start
         ***********************************-->
         <div class="no-print nav-header" style="border-bottom: solid rgb(16, 213, 150); ">
-            <a href="#" class="brand-logo">
-                <img class="logo-abbr" src="images/<?=SITE_LOGO?>" alt="">
-                <img class="logo-compact" src="images/logo-text.png" alt="">
-                <img class="brand-title" src="images/logo-text.png" alt="">
+            <a href="<?php echo SITE_URL ?>easyfinder/dashboard/" class="brand-logo" style="text-decoration:none;">
+                <span class="logo-abbr" style="font-weight:900;font-size:26px;color:#10d596;letter-spacing:1px;display:inline-block;line-height:1;">A</span>
+                <span class="logo-compact" style="font-weight:900;font-size:19px;color:#10d596;letter-spacing:2px;display:inline-block;line-height:1;">Adildata</span>
+                <span class="brand-title" style="font-weight:900;font-size:19px;color:#10d596;letter-spacing:2px;display:inline-block;line-height:1;">Adildata</span>
             </a>
 
             <div class="nav-control">
