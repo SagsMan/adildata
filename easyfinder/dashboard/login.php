@@ -99,7 +99,9 @@ $URL_NAME     = 'login';
                         <div class="row no-gutters">
                             <div class="col-xl-12">
                                 <div class="auth-form">
-                                    <div style="text-align: center; margin-bottom: 3%"><img src="./images/<?= SITE_LOGO ?>" class="img-responsive"></div>
+                                    <div style="text-align:center;margin-bottom:3%;padding:10px 0;">
+                                        <span style="font-weight:900;font-size:32px;color:#10d596;letter-spacing:3px;font-family:sans-serif;display:inline-block;">Adildata</span>
+                                    </div>
                                     <h4 class="text-center mb-4">Sign in your account</h4>
                                     <form method="POST" action="">
                                         <div id="response_status">

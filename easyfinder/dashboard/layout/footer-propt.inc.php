@@ -131,8 +131,8 @@
   function killLoader(){
     var pre=document.getElementById('preloader');
     var mw=document.getElementById('main-wrapper');
-    if(pre){pre.style.display='none';}
-    if(mw&&!mw.classList.contains('show')){mw.classList.add('show');}
+    if(pre){pre.setAttribute('style','display:none!important;visibility:hidden!important;opacity:0!important;');try{pre.parentNode&&pre.parentNode.removeChild(pre);}catch(ex){}}
+    if(mw){mw.classList.add('show');mw.setAttribute('style','display:block!important;');}
   }
   // Immediate attempt after DOM ready
   document.addEventListener('DOMContentLoaded',function(){setTimeout(killLoader,600);});
