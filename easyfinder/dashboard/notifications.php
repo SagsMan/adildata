@@ -11,6 +11,20 @@ if (!in_array(1, explode(',', $Auth->admin_role)) && !in_array(2, explode(',', $
 
 $conn = mysqli_connect('localhost','adiliqgs_adildata','adildata2026','adiliqgs_adildata');
 
+// ── Auto-create table if not exists ──────────────────────────────────────────
+mysqli_query($conn, "CREATE TABLE IF NOT EXISTS notifications_tbl (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    type ENUM('info','success','warning','danger') DEFAULT 'info',
+    target ENUM('all','specific') DEFAULT 'all',
+    target_email VARCHAR(255) NULL,
+    created_by VARCHAR(255) NULL,
+    is_read_by LONGTEXT NULL DEFAULT '[]',
+    status TINYINT(1) DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 // ── Handle Create Notification ────────────────────────────────────────────────
 if (isset($_POST['send_notification'])) {
     $title   = mysqli_real_escape_string($conn, htmlspecialchars(trim($_POST['title'])));
