@@ -33,7 +33,7 @@ function saveSetting($conn, $key, $value) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
     $fields = [
         'resend_api_key', 'resend_from_email', 'resend_from_name',
-        'termii_api_key', 'termii_sender_id', 'termii_channel',
+        'bulksms_api_token', 'bulksms_sender_id', 'bulksms_gateway',
         'sms_enabled', 'email_enabled'
     ];
     foreach ($fields as $f) {
@@ -79,33 +79,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_email'])) {
     }
 }
 
-/* ── Handle Termii test ──────────────────────────────────────────────────── */
+/* ── Handle Bulk SMS Nigeria test ────────────────────────────────────────── */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_sms'])) {
-    $key     = getSetting($conn, 'termii_api_key');
-    $sender  = getSetting($conn, 'termii_sender_id') ?: 'Adildata';
-    $channel = getSetting($conn, 'termii_channel') ?: 'generic';
+    $api_token  = getSetting($conn, 'bulksms_api_token');
+    $sender     = getSetting($conn, 'bulksms_sender_id') ?: 'Adildata';
+    $gateway    = getSetting($conn, 'bulksms_gateway') ?: '0';
     $test_phone = preg_replace('/[^0-9]/', '', $Auth->phone ?? '');
     if (strlen($test_phone) === 11 && $test_phone[0] === '0') $test_phone = '234'.substr($test_phone,1);
 
-    if (empty($key)) {
-        array_push($SITE_ERRORS, 'Termii API Key is not configured.');
+    if (empty($api_token)) {
+        array_push($SITE_ERRORS, 'Bulk SMS Nigeria API Token is not configured.');
     } elseif (empty($test_phone)) {
         array_push($SITE_ERRORS, 'No phone number found on your profile to test SMS.');
     } else {
-        $payload = json_encode([
-            'to'       => $test_phone,
-            'from'     => $sender,
-            'sms'      => 'Adildata Test: SMS notifications are working! ✓',
-            'type'     => 'plain',
-            'channel'  => $channel,
-            'api_key'  => $key,
+        $payload = http_build_query([
+            'api_token'     => $api_token,
+            'from'          => $sender,
+            'to'            => $test_phone,
+            'body'          => 'Adildata Test: SMS notifications are working! Your Bulk SMS Nigeria is connected.',
+            'gateway'       => $gateway,
+            'append_sender' => '0',
         ]);
-        $ch = curl_init('https://api.ng.termii.com/api/sms/send');
+        $ch = curl_init('https://www.bulksmsnigeria.com/api/v1/sms/create');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => $payload,
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded','Accept: application/json'],
             CURLOPT_TIMEOUT        => 15,
             CURLOPT_SSL_VERIFYPEER => false,
         ]);
@@ -113,17 +113,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_sms'])) {
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
         $res  = json_decode($resp, true);
-        if ($code === 200 && isset($res['message_id'])) {
-            array_push($SITE_SUCCESS, 'Test SMS sent to ' . $test_phone . ' successfully!');
+        if ($code === 200 || $code === 201) {
+            array_push($SITE_SUCCESS, 'Test SMS sent to ' . $test_phone . ' via Bulk SMS Nigeria successfully!');
         } else {
             array_push($SITE_ERRORS, 'SMS test failed (HTTP '.$code.'): ' . ($res['message'] ?? $resp));
         }
     }
 }
 
+/* ── Fetch wallet balance ─────────────────────────────────────────────────── */
+$wallet_balance = null;
+$wallet_error   = null;
+$bulksms_token_set = getSetting($conn, 'bulksms_api_token');
+if (!empty($bulksms_token_set)) {
+    $wch = curl_init('https://www.bulksmsnigeria.com/api/v1/wallet?api_token=' . urlencode($bulksms_token_set));
+    curl_setopt_array($wch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => ['Accept: application/json'],
+        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_SSL_VERIFYPEER => false,
+    ]);
+    $wresp = curl_exec($wch);
+    $wcode = curl_getinfo($wch, CURLINFO_HTTP_CODE);
+    curl_close($wch);
+    $wres = json_decode($wresp, true);
+    if ($wcode === 200 && isset($wres['data']['wallet_balance'])) {
+        $wallet_balance = number_format(floatval($wres['data']['wallet_balance']), 2);
+    } else {
+        $wallet_error = $wres['message'] ?? 'Could not fetch balance';
+    }
+}
+
 /* ── Load current settings ───────────────────────────────────────────────── */
 $s = [];
-foreach (['resend_api_key','resend_from_email','resend_from_name','termii_api_key','termii_sender_id','termii_channel','sms_enabled','email_enabled'] as $k) {
+foreach (['resend_api_key','resend_from_email','resend_from_name','bulksms_api_token','bulksms_sender_id','bulksms_gateway','sms_enabled','email_enabled'] as $k) {
     $s[$k] = getSetting($conn, $k);
 }
 mysqli_close($conn);
@@ -233,13 +256,13 @@ mysqli_close($conn);
             </div>
           </div>
 
-          <!-- SMS / Termii -->
+          <!-- SMS / Bulk SMS Nigeria -->
           <div class="col-lg-6 mb-4">
             <div class="card api-card sms-card">
               <div class="card-header d-flex align-items-center justify-content-between">
                 <h4 class="card-title mb-0">
                   <i class="fa fa-mobile mr-2" style="color:#6f42c1;"></i>SMS Notifications
-                  <small class="text-muted ml-2" style="font-size:12px;">via Termii Nigeria</small>
+                  <small class="text-muted ml-2" style="font-size:12px;">via Bulk SMS Nigeria</small>
                 </h4>
                 <div class="custom-control custom-switch">
                   <input type="checkbox" class="custom-control-input" id="smsToggle" name="sms_enabled" value="1" <?= $s['sms_enabled'] ? 'checked' : '' ?>>
@@ -247,48 +270,71 @@ mysqli_close($conn);
                 </div>
               </div>
               <div class="card-body">
-                <div class="alert alert-purple py-2" style="font-size:12px;background:#f3eeff;border-color:#6f42c1;">
+
+                <!-- Wallet Balance Widget -->
+                <?php if (!empty($s['bulksms_api_token'])): ?>
+                <div class="d-flex align-items-center justify-content-between mb-3 p-3 rounded"
+                     style="background:linear-gradient(135deg,#6f42c1,#9b59b6);color:#fff;">
+                  <div>
+                    <div style="font-size:11px;opacity:.85;letter-spacing:.5px;">WALLET BALANCE</div>
+                    <div style="font-size:26px;font-weight:700;line-height:1.2;">
+                      <?php if ($wallet_balance !== null): ?>
+                        ₦<?= $wallet_balance ?>
+                      <?php else: ?>
+                        <span style="font-size:14px;opacity:.8;"><?= htmlspecialchars($wallet_error ?? 'Unable to fetch') ?></span>
+                      <?php endif; ?>
+                    </div>
+                    <div style="font-size:10px;opacity:.7;margin-top:2px;">Bulk SMS Nigeria Account</div>
+                  </div>
+                  <div>
+                    <i class="fa fa-mobile" style="font-size:40px;opacity:.3;"></i>
+                  </div>
+                </div>
+                <?php endif; ?>
+
+                <div class="alert py-2" style="font-size:12px;background:#f3eeff;border:1px solid #6f42c1;border-radius:6px;">
                   <i class="fa fa-info-circle mr-1" style="color:#6f42c1;"></i>
-                  Get your API key at <a href="https://termii.com" target="_blank">termii.com</a> — Nigeria's leading bulk SMS platform. 
-                  Supports DND numbers via DND channel.
+                  Get your API token at <a href="https://www.bulksmsnigeria.com" target="_blank" style="color:#6f42c1;"><strong>bulksmsnigeria.com</strong></a> — Nigeria's most popular bulk SMS platform.
+                  Register → Profile → API Token.
                 </div>
 
                 <div class="form-group">
-                  <label class="font-w600" style="font-size:13px;">Termii API Key <span class="text-danger">*</span></label>
+                  <label class="font-w600" style="font-size:13px;">API Token <span class="text-danger">*</span></label>
                   <div class="input-group">
-                    <input type="password" name="termii_api_key" id="termiiKey" class="form-control key-input"
-                      placeholder="TLxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                      value="<?= htmlspecialchars($s['termii_api_key']) ?>">
+                    <input type="password" name="bulksms_api_token" id="bulksmsKey" class="form-control key-input"
+                      placeholder="Your Bulk SMS Nigeria API Token"
+                      value="<?= htmlspecialchars($s['bulksms_api_token']) ?>">
                     <div class="input-group-append">
-                      <button type="button" class="btn btn-outline-secondary toggle-key" onclick="toggleField('termiiKey')">
+                      <button type="button" class="btn btn-outline-secondary toggle-key" onclick="toggleField('bulksmsKey')">
                         <i class="fa fa-eye"></i>
                       </button>
                     </div>
                   </div>
+                  <small class="text-muted">Found in your Bulk SMS Nigeria account under Profile → API Token</small>
                 </div>
 
                 <div class="form-group">
-                  <label class="font-w600" style="font-size:13px;">Sender ID / Name</label>
-                  <input type="text" name="termii_sender_id" class="form-control" maxlength="11"
+                  <label class="font-w600" style="font-size:13px;">Sender Name / ID</label>
+                  <input type="text" name="bulksms_sender_id" class="form-control" maxlength="11"
                     placeholder="Adildata"
-                    value="<?= htmlspecialchars($s['termii_sender_id'] ?: 'Adildata') ?>">
-                  <small class="text-muted">Max 11 characters. Must be pre-approved by Termii for DND channel.</small>
+                    value="<?= htmlspecialchars($s['bulksms_sender_id'] ?: 'Adildata') ?>">
+                  <small class="text-muted">Max 11 characters — appears as the sender name on recipients' phones.</small>
                 </div>
 
                 <div class="form-group mb-0">
-                  <label class="font-w600" style="font-size:13px;">SMS Channel</label>
-                  <select name="termii_channel" class="form-control">
-                    <option value="generic" <?= ($s['termii_channel']??'')==='generic'?'selected':'' ?>>Generic (non-DND numbers)</option>
-                    <option value="dnd" <?= ($s['termii_channel']??'')==='dnd'?'selected':'' ?>>DND (reaches DND numbers — requires approval)</option>
-                    <option value="WhatsApp" <?= ($s['termii_channel']??'')==='WhatsApp'?'selected':'' ?>>WhatsApp</option>
+                  <label class="font-w600" style="font-size:13px;">Gateway / Route</label>
+                  <select name="bulksms_gateway" class="form-control">
+                    <option value="0" <?= ($s['bulksms_gateway']??'0')==='0'?'selected':'' ?>>Generic Route (Standard)</option>
+                    <option value="1" <?= ($s['bulksms_gateway']??'')==='1'?'selected':'' ?>>DND Route (reaches DND numbers)</option>
                   </select>
+                  <small class="text-muted">Use DND route to reach numbers on the Do-Not-Disturb registry.</small>
                 </div>
               </div>
-              <div class="card-footer d-flex justify-content-between align-items-center">
-                <button type="submit" name="test_sms" class="btn btn-outline-secondary btn-sm" style="border-color:#6f42c1;color:#6f42c1;">
+              <div class="card-footer d-flex justify-content-between align-items-center flex-wrap" style="gap:8px;">
+                <button type="submit" name="test_sms" class="btn btn-sm" style="border:1px solid #6f42c1;color:#6f42c1;">
                   <i class="fa fa-mobile mr-1"></i> Send Test SMS to your phone
                 </button>
-                <?php if (!empty($s['termii_api_key'])): ?>
+                <?php if (!empty($s['bulksms_api_token'])): ?>
                 <span><span class="status-dot" style="background:#10d596;"></span> <small class="text-success">Configured</small></span>
                 <?php else: ?>
                 <span><span class="status-dot" style="background:#dc3545;"></span> <small class="text-danger">Not configured</small></span>
@@ -342,8 +388,8 @@ mysqli_close($conn);
         <div class="col-md-4 mb-3">
           <div class="card h-100">
             <div class="card-body">
-              <h6 style="color:#6f42c1;" class="font-w700"><i class="fa fa-mobile mr-2"></i>SMS via Termii</h6>
-              <p style="font-size:13px;" class="text-muted mb-0">Sends SMS to all users with registered phone numbers. Uses Nigerian phone format (08XXXXXXXXX → 2348XXXXXXXXX).</p>
+              <h6 style="color:#6f42c1;" class="font-w700"><i class="fa fa-mobile mr-2"></i>SMS via Bulk SMS Nigeria</h6>
+              <p style="font-size:13px;" class="text-muted mb-0">Sends SMS to all users with Nigerian phone numbers. Auto-converts 08XXXXXXXXX → 2348XXXXXXXXX. Wallet balance shows live on this page.</p>
             </div>
           </div>
         </div>
