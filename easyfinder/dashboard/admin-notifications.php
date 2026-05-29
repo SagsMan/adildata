@@ -171,6 +171,32 @@ foreach (['general','update','important','promotion','system_alert'] as $nt) {
     $type_counts[$nt] = $stat("SELECT COUNT(*) FROM admin_notifications_tbl WHERE notif_type='$nt'");
 }
 
+/* ── Bulk SMS Nigeria wallet balance ─────────────────────────────────────── */
+$sms_wallet_balance = null;
+$sms_wallet_error   = null;
+$bsn_r = mysqli_query($conn, "SELECT setting_value FROM admin_notif_api_settings WHERE setting_key='bulksms_api_token' LIMIT 1");
+if ($bsn_r && $bsn_row = mysqli_fetch_assoc($bsn_r)) {
+    $bsn_token = trim($bsn_row['setting_value'] ?? '');
+    if (!empty($bsn_token)) {
+        $wch = curl_init('https://www.bulksmsnigeria.com/api/v1/wallet?api_token=' . urlencode($bsn_token));
+        curl_setopt_array($wch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER     => ['Accept: application/json'],
+            CURLOPT_TIMEOUT        => 8,
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+        $wresp = curl_exec($wch);
+        $wcode = curl_getinfo($wch, CURLINFO_HTTP_CODE);
+        curl_close($wch);
+        $wres = json_decode($wresp, true);
+        if ($wcode === 200 && isset($wres['data']['wallet_balance'])) {
+            $sms_wallet_balance = number_format(floatval($wres['data']['wallet_balance']), 2);
+        } else {
+            $sms_wallet_error = 'Check API Settings';
+        }
+    }
+}
+
 mysqli_close($conn);
 ?>
 <!DOCTYPE html>
@@ -373,6 +399,51 @@ mysqli_close($conn);
           </div>
         </div>
         <div class="col-md-3 col-sm-6 mb-3">
+          <?php if ($sms_wallet_balance !== null): ?>
+          <div class="card mb-0 h-100" style="background:linear-gradient(135deg,#6f42c1,#9b59b6);color:#fff;border:none;">
+            <div class="card-body py-3">
+              <div class="d-flex align-items-center justify-content-between">
+                <div>
+                  <p class="mb-1" style="font-size:10px;opacity:.8;letter-spacing:.5px;">SMS WALLET BALANCE</p>
+                  <h5 class="mb-0 font-w700" style="color:#fff;">₦<?= $sms_wallet_balance ?></h5>
+                  <small style="opacity:.7;font-size:10px;">Bulk SMS Nigeria</small>
+                </div>
+                <div>
+                  <i class="fa fa-mobile fa-2x" style="opacity:.4;"></i><br>
+                  <a href="admin-notification-settings" style="font-size:9px;color:rgba(255,255,255,.7);">Top up ↗</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <?php elseif ($sms_wallet_error !== null): ?>
+          <div class="card mb-0 h-100" style="border-left:4px solid #6f42c1;">
+            <div class="card-body py-3">
+              <div class="d-flex align-items-center justify-content-between">
+                <div>
+                  <p class="mb-1 text-muted" style="font-size:10px;letter-spacing:.5px;">SMS WALLET</p>
+                  <h6 class="mb-0 text-muted font-w700" style="font-size:12px;"><?= htmlspecialchars($sms_wallet_error) ?></h6>
+                  <a href="admin-notification-settings" style="font-size:10px;color:#6f42c1;">Configure API →</a>
+                </div>
+                <i class="fa fa-mobile fa-2x" style="color:#6f42c1;opacity:.4;"></i>
+              </div>
+            </div>
+          </div>
+          <?php else: ?>
+          <div class="card mb-0 h-100" style="border:2px dashed #dee2e6;">
+            <div class="card-body py-3">
+              <div class="d-flex align-items-center justify-content-between">
+                <div>
+                  <p class="mb-1 text-muted" style="font-size:10px;letter-spacing:.5px;">SMS WALLET</p>
+                  <p class="mb-0 text-muted" style="font-size:12px;">Not configured</p>
+                  <a href="admin-notification-settings" style="font-size:10px;color:#6f42c1;">Setup Bulk SMS →</a>
+                </div>
+                <i class="fa fa-mobile fa-2x text-muted" style="opacity:.3;"></i>
+              </div>
+            </div>
+          </div>
+          <?php endif; ?>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3 d-none"><!-- placeholder to maintain layout -->
           <div class="card mb-0 h-100">
             <div class="card-body py-3">
               <div class="d-flex align-items-center justify-content-between">
