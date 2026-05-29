@@ -78,13 +78,38 @@
                                 <div class="dropdown-menu dropdown-menu-right">
                                     
                                     <div id="DZ_W_Notification1" class="widget-media dz-scroll p-3" style="height:380px;">
-                                        <h4>New Notification(s)</h4>
-                                        <hr>
+<?php
+$_nc = @mysqli_connect("localhost","adiliqgs_adildata","adildata2026","adiliqgs_adildata");
+$_nu = 0; $_nl = [];
+if ($_nc) {
+    $_ne = mysqli_real_escape_string($_nc, $Auth->email);
+    $_nr = mysqli_query($_nc, "SELECT * FROM notifications_tbl WHERE status=1 AND (target='all' OR target_email='$_ne') ORDER BY id DESC LIMIT 8");
+    if ($_nr) { while ($_nrow = mysqli_fetch_assoc($_nr)) {
+        $_readers = json_decode($_nrow['is_read_by'] ?: '[]', true);
+        if (!is_array($_readers)) $_readers = [];
+        $_nrow['_read'] = in_array($Auth->email, $_readers);
+        if (!$_nrow['_read']) $_nu++;
+        $_nl[] = $_nrow;
+    }}
+    mysqli_close($_nc);
+}
+?>
+<h4>Notifications <?php if ($_nu > 0) echo '<span class="badge badge-danger ml-1">'.$_nu.'</span>'; ?></h4><hr>
+<?php if (empty($_nl)): ?>
+  <p class="text-center text-muted" style="font-size:13px;margin-top:20px;">No notifications yet.</p>
+<?php else: foreach ($_nl as $_n):
+  $_colors = ['info'=>'#17a2b8','success'=>'#10d596','warning'=>'#ffc107','danger'=>'#dc3545'];
+  $_color = $_colors[$_n['type']] ?? '#10d596';
+?>
+  <div style="border-left:3px solid <?=$_color?>;padding:8px 10px;margin-bottom:8px;background:<?=!$_n['_read']?'#f8fff8':'#fff'?>;border-radius:0 4px 4px 0;">
+    <strong style="font-size:13px;"><?=htmlspecialchars($_n['title'])?></strong>
+    <?php if (!$_n['_read']): ?><span class="badge badge-<?=$_n['type']?>" style="font-size:9px;">NEW</span><?php endif; ?>
+    <p style="font-size:12px;color:#777;margin:2px 0 0;"><?=htmlspecialchars(substr($_n['message'],0,60))?>...</p>
+  </div>
+<?php endforeach; endif; ?>
 
-                                       
-
-									</div>
-                                    <a class="all-notification" href="#">See all notifications <i class="ti-arrow-right"></i></a>
+</div>
+                                    <a class="all-notification" href="my-notifications">See all notifications <i class="ti-arrow-right"></i></a>
                                 </div>
                             </li>
                             <li class="nav-item dropdown header-profile">
