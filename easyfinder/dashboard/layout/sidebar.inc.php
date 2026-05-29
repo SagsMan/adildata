@@ -84,6 +84,24 @@
                      <span class="nav-text">Verify Payment</span>
                  </a>
              </li>
+             <?php if (in_array(1, explode(',', $Auth->admin_role)) || in_array(2, explode(',', $Auth->admin_role))): ?>
+             <li>
+                 <a href="<?php echo SITE_URL . 'easyfinder/dashboard/admin-notifications' ?>" class="ai-icon" aria-expanded="false">
+                     <i class="fa fa-bell" style="font-size:16px;"></i>
+                     <span class="nav-text">Notifications
+                         <?php
+                         $_pn = @mysqli_connect("localhost","adiliqgs_adildata","adildata2026","adiliqgs_adildata");
+                         if ($_pn) {
+                             $_pnr = mysqli_query($_pn, "SELECT COUNT(*) FROM admin_notifications_tbl WHERE status='pending'");
+                             $_pnc = $_pnr ? intval(mysqli_fetch_row($_pnr)[0]) : 0;
+                             mysqli_close($_pn);
+                             if ($_pnc > 0) echo '<span class="badge badge-warning ml-1" style="font-size:9px;">'.$_pnc.'</span>';
+                         }
+                         ?>
+                     </span>
+                 </a>
+             </li>
+             <?php endif; ?>
          </ul>
 
          <div class="add-menu-sidebar">
