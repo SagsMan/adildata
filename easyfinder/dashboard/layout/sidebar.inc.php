@@ -85,21 +85,29 @@
                  </a>
              </li>
              <?php if (in_array(1, explode(',', $Auth->admin_role)) || in_array(2, explode(',', $Auth->admin_role))): ?>
+             <?php
+             $_pn = @mysqli_connect("localhost","adiliqgs_adildata","adildata2026","adiliqgs_adildata");
+             $_pnc = 0;
+             if ($_pn) {
+                 $_pnr = mysqli_query($_pn, "SELECT COUNT(*) FROM admin_notifications_tbl WHERE status='pending'");
+                 $_pnc = $_pnr ? intval(mysqli_fetch_row($_pnr)[0]) : 0;
+                 mysqli_close($_pn);
+             }
+             ?>
              <li>
-                 <a href="<?php echo SITE_URL . 'easyfinder/dashboard/admin-notifications' ?>" class="ai-icon" aria-expanded="false">
+                 <a class="has-arrow ai-icon" href="javascript:void(0)" aria-expanded="false">
                      <i class="fa fa-bell" style="font-size:16px;"></i>
                      <span class="nav-text">Notifications
-                         <?php
-                         $_pn = @mysqli_connect("localhost","adiliqgs_adildata","adildata2026","adiliqgs_adildata");
-                         if ($_pn) {
-                             $_pnr = mysqli_query($_pn, "SELECT COUNT(*) FROM admin_notifications_tbl WHERE status='pending'");
-                             $_pnc = $_pnr ? intval(mysqli_fetch_row($_pnr)[0]) : 0;
-                             mysqli_close($_pn);
-                             if ($_pnc > 0) echo '<span class="badge badge-warning ml-1" style="font-size:9px;">'.$_pnc.'</span>';
-                         }
-                         ?>
+                         <?php if ($_pnc > 0): ?>
+                         <span class="badge badge-warning ml-1" style="font-size:9px;vertical-align:middle;"><?= $_pnc ?></span>
+                         <?php endif; ?>
                      </span>
                  </a>
+                 <ul aria-expanded="false">
+                     <li><a href="<?= SITE_URL ?>easyfinder/dashboard/admin-notifications"><i class="fa fa-tachometer mr-1"></i> Dashboard</a></li>
+                     <li><a href="<?= SITE_URL ?>easyfinder/dashboard/admin-notification-create"><i class="fa fa-plus mr-1"></i> Create New</a></li>
+                     <li><a href="<?= SITE_URL ?>easyfinder/dashboard/admin-notification-settings"><i class="fa fa-cog mr-1"></i> API Settings</a></li>
+                 </ul>
              </li>
              <?php endif; ?>
          </ul>
