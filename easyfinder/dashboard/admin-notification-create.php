@@ -137,11 +137,11 @@ function sendEmailsViaResend($conn, $notif_id, $title, $message, $ntype, $target
     return ['sent'=>$sent,'failed'=>$failed];
 }
 
-function sendSMSViaTermii($conn, $notif_id, $title, $message, $target, $target_email_only) {
-    $api_key  = getSetting($conn, 'termii_api_key');
-    $sender   = getSetting($conn, 'termii_sender_id') ?: 'Adildata';
-    $channel  = getSetting($conn, 'termii_channel') ?: 'generic';
-    if (empty($api_key)) return ['sent'=>0,'failed'=>0,'error'=>'Termii API key not configured'];
+function sendSMSViaBulkSMSNigeria($conn, $notif_id, $title, $message, $target, $target_email_only) {
+    $api_token = getSetting($conn, 'bulksms_api_token');
+    $sender    = getSetting($conn, 'bulksms_sender_id') ?: 'Adildata';
+    $gateway   = getSetting($conn, 'bulksms_gateway') ?: '0';
+    if (empty($api_token)) return ['sent'=>0,'failed'=>0,'error'=>'Bulk SMS Nigeria API token not configured. Go to Notifications → API Settings.'];
 
     $sms_text = strip_tags($title)."\n".strip_tags($message);
     if (strlen($sms_text) > 160) $sms_text = substr($sms_text, 0, 157).'...';
@@ -156,32 +156,34 @@ function sendSMSViaTermii($conn, $notif_id, $title, $message, $target, $target_e
         if ($pr) { while ($prow = mysqli_fetch_row($pr)) $phones[] = $prow[0]; }
     }
 
-    /* Normalise to Nigerian international format */
+    /* Normalise to Nigerian international format (2348XXXXXXXXX) */
     $valid_phones = [];
     foreach ($phones as $ph) {
         $formatted = formatNgPhone($ph);
         if ($formatted && strlen($formatted) >= 12) $valid_phones[] = $formatted;
     }
 
-    if (empty($valid_phones)) return ['sent'=>0,'failed'=>0,'error'=>'No valid phone numbers found'];
+    if (empty($valid_phones)) return ['sent'=>0,'failed'=>0,'error'=>'No valid Nigerian phone numbers found in user records'];
 
     $sent = 0; $failed = 0;
-    $chunks = array_chunk($valid_phones, 100);
+    /* BulkSMSNigeria accepts comma-separated numbers — send in batches of 200 */
+    $chunks = array_chunk($valid_phones, 200);
     foreach ($chunks as $chunk) {
-        $payload = json_encode([
-            'to'      => $chunk,
-            'from'    => $sender,
-            'sms'     => $sms_text,
-            'type'    => 'plain',
-            'channel' => $channel,
-            'api_key' => $api_key,
+        $to_str = implode(',', $chunk);
+        $payload = http_build_query([
+            'api_token' => $api_token,
+            'from'      => $sender,
+            'to'        => $to_str,
+            'body'      => $sms_text,
+            'gateway'   => $gateway,
+            'append_sender' => '0',
         ]);
-        $ch = curl_init('https://api.ng.termii.com/api/sms/send/bulk');
+        $ch = curl_init('https://www.bulksmsnigeria.com/api/v1/sms/create');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => $payload,
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded','Accept: application/json'],
             CURLOPT_TIMEOUT        => 30,
             CURLOPT_SSL_VERIFYPEER => false,
         ]);
@@ -189,7 +191,7 @@ function sendSMSViaTermii($conn, $notif_id, $title, $message, $target, $target_e
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
         $res  = json_decode($resp, true);
-        if ($code === 200 && isset($res['message_id'])) {
+        if ($code === 200 || $code === 201) {
             $sent += count($chunk);
         } else {
             $failed += count($chunk);
@@ -212,8 +214,8 @@ $user_count_r = mysqli_query($conn, "SELECT COUNT(*) FROM users_tbl");
 $user_count   = $user_count_r ? intval(mysqli_fetch_row($user_count_r)[0]) : 0;
 
 /* ── API keys configured? ────────────────────────────────────────────────── */
-$resend_ready = !empty(getSetting($conn, 'resend_api_key'));
-$termii_ready = !empty(getSetting($conn, 'termii_api_key'));
+$resend_ready  = !empty(getSetting($conn, 'resend_api_key'));
+$bulksms_ready = !empty(getSetting($conn, 'bulksms_api_token'));
 
 /* ── Handle form submission ──────────────────────────────────────────────── */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -316,7 +318,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             /* SMS channel */
             if ($ch_sms) {
-                $sr = sendSMSViaTermii($conn, $notif_id, $title, $message, $target, $target_email_only);
+                $sr = sendSMSViaBulkSMSNigeria($conn, $notif_id, $title, $message, $target, $target_email_only);
                 if (isset($sr['error'])) {
                     array_push($SITE_ERRORS, 'SMS: '.$sr['error']);
                 } else {
@@ -488,20 +490,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <!-- SMS -->
                 <div class="col-md-4 mb-3">
                   <div class="channel-card <?= in_array('sms',$cur_channels)?'active-sms':'' ?>" onclick="toggleChannel('sms',this)">
-                    <?php if ($termii_ready): ?>
+                    <?php if ($bulksms_ready): ?>
                     <span class="badge badge-configured" style="background:#6f42c1;color:#fff;">Ready</span>
                     <?php else: ?>
                     <span class="badge badge-warning badge-configured">Setup needed</span>
                     <?php endif; ?>
                     <div class="ch-icon" style="color:#6f42c1;"><i class="fa fa-mobile"></i></div>
                     <div class="ch-label">SMS Nigeria</div>
-                    <div class="ch-desc">via Termii bulk SMS</div>
+                    <div class="ch-desc">via Bulk SMS Nigeria</div>
                     <input type="checkbox" name="ch_sms" value="1" id="ch_sms"
                       <?= in_array('sms',$cur_channels)?'checked':'' ?> style="display:none;">
                   </div>
-                  <?php if (!$termii_ready): ?>
+                  <?php if (!$bulksms_ready): ?>
                   <div class="text-center mt-1">
-                    <a href="admin-notification-settings" style="font-size:11px;color:#6f42c1;">⚙ Configure Termii SMS</a>
+                    <a href="admin-notification-settings" style="font-size:11px;color:#6f42c1;">⚙ Configure Bulk SMS Nigeria</a>
                   </div>
                   <?php endif; ?>
                 </div>
