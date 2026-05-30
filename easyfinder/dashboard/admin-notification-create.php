@@ -276,14 +276,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($notif_id > 0 && $action === 'send_now') {
             /* ── Live send to all users ── */
             $users_r = ($target === 'all')
-                ? mysqli_query($conn, "SELECT id, fname, lname, email, phone FROM users_tbl")
-                : mysqli_query($conn, "SELECT id, fname, lname, email, phone FROM users_tbl WHERE email='".mysqli_real_escape_string($conn,$target_email_only)."' LIMIT 1");
+                ? mysqli_query($conn, "SELECT id, sname, oname, email, phone FROM users_tbl")
+                : mysqli_query($conn, "SELECT id, sname, oname, email, phone FROM users_tbl WHERE email='".mysqli_real_escape_string($conn,$target_email_only)."' LIMIT 1");
 
             $total = 0;
             if ($users_r) {
                 while ($u = mysqli_fetch_assoc($users_r)) {
                     $ue  = mysqli_real_escape_string($conn, $u['email']);
-                    $un  = mysqli_real_escape_string($conn, trim(($u['fname']??'').' '.($u['lname']??'')));
+                    $un  = mysqli_real_escape_string($conn, trim(($u['sname']??'').' '.($u['oname']??'')));
                     $up  = mysqli_real_escape_string($conn, $u['phone'] ?? '');
                     $uid = intval($u['id']);
                     mysqli_query($conn, "INSERT INTO admin_notif_delivery_tbl
