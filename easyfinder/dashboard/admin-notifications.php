@@ -48,6 +48,11 @@ mysqli_query($conn, "CREATE TABLE IF NOT EXISTS admin_notif_delivery_tbl (
     INDEX idx_delivery_status (delivery_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+/* ── Migrate: add columns if missing from older table schema ─────────────── */
+@mysqli_query($conn, "ALTER TABLE admin_notifications_tbl ADD COLUMN channels VARCHAR(100) DEFAULT 'inapp' AFTER status");
+@mysqli_query($conn, "ALTER TABLE admin_notifications_tbl ADD COLUMN email_sent INT DEFAULT 0");
+@mysqli_query($conn, "ALTER TABLE admin_notifications_tbl ADD COLUMN sms_sent INT DEFAULT 0");
+
 /* ── Sync read status from legacy notifications_tbl ──────────────────────── */
 $sync_r = mysqli_query($conn, "SELECT ant.id, ant.legacy_notif_id FROM admin_notifications_tbl ant WHERE ant.legacy_notif_id IS NOT NULL AND ant.status='sent'");
 if ($sync_r) {
