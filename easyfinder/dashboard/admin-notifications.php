@@ -79,12 +79,12 @@ $sched = mysqli_query($conn, "SELECT * FROM admin_notifications_tbl WHERE status
 if ($sched) {
     while ($sn = mysqli_fetch_assoc($sched)) {
         $sid = intval($sn['id']);
-        $users_r = mysqli_query($conn, "SELECT id, fname, lname, email, phone FROM users_tbl");
+        $users_r = mysqli_query($conn, "SELECT id, sname, oname, email, phone FROM users_tbl");
         $total = 0;
         if ($users_r) {
             while ($u = mysqli_fetch_assoc($users_r)) {
                 $ue = mysqli_real_escape_string($conn, $u['email']);
-                $un = mysqli_real_escape_string($conn, trim($u['fname'].' '.$u['lname']));
+                $un = mysqli_real_escape_string($conn, trim($u['sname'].' '.$u['oname']));
                 $up = mysqli_real_escape_string($conn, $u['phone'] ?? '');
                 mysqli_query($conn, "INSERT INTO admin_notif_delivery_tbl (notification_id,user_id,user_name,user_email,user_phone,delivery_status,sent_at) VALUES($sid,{$u['id']},'$un','$ue','$up','sent',NOW())");
                 $total++;
