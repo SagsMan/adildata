@@ -57,6 +57,11 @@ mysqli_query($conn, "CREATE TABLE IF NOT EXISTS admin_notif_api_settings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+/* ── Migrate: add columns if missing from older table schema ─────────────── */
+@mysqli_query($conn, "ALTER TABLE admin_notifications_tbl ADD COLUMN channels VARCHAR(100) DEFAULT 'inapp' AFTER status");
+@mysqli_query($conn, "ALTER TABLE admin_notifications_tbl ADD COLUMN email_sent INT DEFAULT 0");
+@mysqli_query($conn, "ALTER TABLE admin_notifications_tbl ADD COLUMN sms_sent INT DEFAULT 0");
+
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 function getSetting($conn, $key) {
     $k = mysqli_real_escape_string($conn, $key);
