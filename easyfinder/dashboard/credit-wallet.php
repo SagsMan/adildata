@@ -13,18 +13,25 @@ $need_bvn_form   = false;
 // Handle manual generate button — collect BVN first if not on record
 if (isset($_POST['generate_monnify'])) {
     $Auth = $UserAuth->GetUserId($Auth->email);
-    // Save BVN/NIN if submitted
+    // Save BVN or NIN if submitted
+    $conn_bvn = mysqli_connect('localhost','adiliqgs_adildata','adildata2026','adiliqgs_adildata');
+    $es = mysqli_real_escape_string($conn_bvn, $Auth->email);
     if (!empty(trim($_POST['bvn'] ?? ''))) {
         $bvn_clean = preg_replace('/\D/', '', trim($_POST['bvn']));
         if (strlen($bvn_clean) === 11) {
-            $conn_bvn = mysqli_connect('localhost','adiliqgs_adildata','adildata2026','adiliqgs_adildata');
-            $es  = mysqli_real_escape_string($conn_bvn, $Auth->email);
             $bvs = mysqli_real_escape_string($conn_bvn, $bvn_clean);
             mysqli_query($conn_bvn, "UPDATE users_tbl SET bvn='$bvs' WHERE email='$es'");
-            mysqli_close($conn_bvn);
+            $Auth = $UserAuth->GetUserId($Auth->email);
+        }
+    } elseif (!empty(trim($_POST['nin'] ?? ''))) {
+        $nin_clean = preg_replace('/\D/', '', trim($_POST['nin']));
+        if (strlen($nin_clean) === 11) {
+            $nis = mysqli_real_escape_string($conn_bvn, $nin_clean);
+            mysqli_query($conn_bvn, "UPDATE users_tbl SET nin='$nis' WHERE email='$es'");
             $Auth = $UserAuth->GetUserId($Auth->email);
         }
     }
+    mysqli_close($conn_bvn);
     // If still no BVN/NIN, show collection form
     if (empty($Auth->bvn) && empty($Auth->nin)) {
         $need_bvn_form = true;
@@ -36,9 +43,9 @@ if (isset($_POST['generate_monnify'])) {
         } else {
             $err_msg = strtolower($result['message'] ?? '');
             // Monnify rejected the BVN — ask user to correct it
-            if (strpos($err_msg, 'bvn') !== false || strpos($err_msg, 'invalid') !== false) {
+            if (strpos($err_msg, 'bvn') !== false || strpos($err_msg, 'nin') !== false || strpos($err_msg, 'invalid') !== false) {
                 $need_bvn_form = true;
-                $monnify_err  = 'The BVN on file was rejected. Please enter your correct 11-digit BVN below.';
+                $monnify_err  = 'Your BVN/NIN was rejected by Monnify. Please re-enter your correct 11-digit BVN or NIN below.';
             } else {
                 $monnify_err = 'Could not create Monnify account: ' . ($result['message'] ?? 'Unknown error');
             }
@@ -312,17 +319,46 @@ if (isset($_POST['generate_monnify'])) {
                                             </a>
                                         </div>
                                     <?php elseif ($need_bvn_form): ?>
-                                        <div class="alert alert-warning mb-3">
+                                        <div class="alert alert-info mb-3">
                                             <i class="fa fa-id-card mr-1"></i>
-                                            <strong>BVN Required:</strong> To generate your dedicated bank account, please enter your 11-digit BVN (Bank Verification Number).
+                                            <strong>Identity Verification Required</strong><br>
+                                            To generate your dedicated Monnify bank account (CBN compliance), please provide your <strong>BVN</strong> or your <strong>NIN</strong> — whichever you have.
                                         </div>
                                         <form method="POST" action="">
-                                            <div class="form-group">
-                                                <label><strong>Your BVN (11 digits)</strong></label>
-                                                <input type="text" name="bvn" class="form-control" maxlength="11"
+                                            <!-- Toggle Tabs -->
+                                            <div class="mb-3">
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <button type="button" class="btn btn-success active" id="tab-bvn"
+                                                        onclick="switchTab('bvn')"
+                                                        style="background:#10d596;border-color:#10d596;">
+                                                        Use BVN
+                                                    </button>
+                                                    <button type="button" class="btn btn-outline-success" id="tab-nin"
+                                                        onclick="switchTab('nin')"
+                                                        style="color:#10d596;border-color:#10d596;">
+                                                        Use NIN instead
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <!-- BVN field -->
+                                            <div id="field-bvn" class="form-group">
+                                                <label><strong>BVN (11 digits)</strong></label>
+                                                <input type="text" name="bvn" id="input-bvn" class="form-control" maxlength="11"
                                                     pattern="\d{11}" placeholder="Enter your 11-digit BVN"
-                                                    required style="max-width:280px;">
-                                                <small class="form-text text-muted">Your BVN is used only to verify your identity with Monnify. Dial *565*0# to get your BVN.</small>
+                                                    style="max-width:280px;">
+                                                <small class="form-text text-muted">
+                                                    Dial <strong>*565*0#</strong> on your registered line to get your BVN.
+                                                </small>
+                                            </div>
+                                            <!-- NIN field (hidden by default) -->
+                                            <div id="field-nin" class="form-group" style="display:none;">
+                                                <label><strong>NIN (11 digits)</strong></label>
+                                                <input type="text" name="nin" id="input-nin" class="form-control" maxlength="11"
+                                                    pattern="\d{11}" placeholder="Enter your 11-digit NIN"
+                                                    style="max-width:280px;">
+                                                <small class="form-text text-muted">
+                                                    Dial <strong>*346#</strong> on your registered line to get your NIN.
+                                                </small>
                                             </div>
                                             <button type="submit" name="generate_monnify" value="1"
                                                 class="btn btn-success"
@@ -330,6 +366,41 @@ if (isset($_POST['generate_monnify'])) {
                                                 <i class="fa fa-university mr-1"></i> Generate Monnify Account
                                             </button>
                                         </form>
+                                        <script>
+                                        function switchTab(type) {
+                                            var bvnField = document.getElementById('field-bvn');
+                                            var ninField = document.getElementById('field-nin');
+                                            var bvnInput = document.getElementById('input-bvn');
+                                            var ninInput = document.getElementById('input-nin');
+                                            var tabBvn   = document.getElementById('tab-bvn');
+                                            var tabNin   = document.getElementById('tab-nin');
+                                            if (type === 'bvn') {
+                                                bvnField.style.display = '';
+                                                ninField.style.display = 'none';
+                                                bvnInput.required = true;
+                                                ninInput.required = false;
+                                                ninInput.value = '';
+                                                tabBvn.className = 'btn btn-success active';
+                                                tabBvn.style.cssText = 'background:#10d596;border-color:#10d596;';
+                                                tabNin.className = 'btn btn-outline-success';
+                                                tabNin.style.cssText = 'color:#10d596;border-color:#10d596;';
+                                            } else {
+                                                ninField.style.display = '';
+                                                bvnField.style.display = 'none';
+                                                ninInput.required = true;
+                                                bvnInput.required = false;
+                                                bvnInput.value = '';
+                                                tabNin.className = 'btn btn-success active';
+                                                tabNin.style.cssText = 'background:#10d596;border-color:#10d596;';
+                                                tabBvn.className = 'btn btn-outline-success';
+                                                tabBvn.style.cssText = 'color:#10d596;border-color:#10d596;';
+                                            }
+                                        }
+                                        // Set BVN as required by default on load
+                                        document.addEventListener('DOMContentLoaded', function() {
+                                            document.getElementById('input-bvn').required = true;
+                                        });
+                                        </script>
                                     <?php else: ?>
                                         <p class="mb-3">Your permanent bank account number is being set up. This usually completes automatically.</p>
                                         <form method="POST" action="">
