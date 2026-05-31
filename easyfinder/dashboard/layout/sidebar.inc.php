@@ -110,6 +110,23 @@
                  </ul>
              </li>
              <?php endif; ?>
+             <?php if (in_array(1, explode(',', $Auth->admin_role ?? ''))): ?>
+             <li><a href="<?php echo SITE_URL . 'easyfinder/dashboard/admin-monnify-users' ?>" class="ai-icon" aria-expanded="false">
+                     <i class="flaticon-381-settings-2"></i>
+                     <span class="nav-text">Monnify Manager</span>
+                 </a>
+             </li>
+             <?php endif; ?>
+             <li><a href="<?php echo SITE_URL . 'easyfinder/dashboard/referral' ?>" class="ai-icon" aria-expanded="false">
+                     <i class="flaticon-381-star-1"></i>
+                     <span class="nav-text">Referral & Earnings</span>
+                 </a>
+             </li>
+             <li><a href="<?php echo SITE_URL . 'easyfinder/dashboard/verify-monnify' ?>" class="ai-icon" aria-expanded="false">
+                     <i class="flaticon-381-check-circle"></i>
+                     <span class="nav-text">Verify Payment</span>
+                 </a>
+             </li>
          </ul>
 
          <div class="add-menu-sidebar">
