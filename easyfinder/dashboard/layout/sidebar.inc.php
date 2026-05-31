@@ -10,81 +10,60 @@
                      <span class="nav-text">Dashboard</span>
                  </a>
              </li>
+
              <?php if ($links = $site_settings->url_link($Auth->admin_role)) {
 
-                    // Define the specific links you want to prioritize -- for multiple sorting
                     $specificLinks = ['verifications', 'mobile-topup'];
-
-                    // Extract the specific links in the defined order
                     $prioritizedLinks = array_filter($links, fn($link) => in_array($link->link, $specificLinks));
-
-                    // Sort the prioritized links to match the order in $specificLinks
                     usort($prioritizedLinks, function ($a, $b) use ($specificLinks) {
                         return array_search($a->link, $specificLinks) - array_search($b->link, $specificLinks);
                     });
-
-                    // Get the remaining links
                     $remainingLinks = array_filter($links, fn($link) => !in_array($link->link, $specificLinks));
-
-                    // Combine prioritized links with the remaining links
                     $links = array_merge($prioritizedLinks, $remainingLinks);
 
-                    // Move the specific link to the beginning
-                    // $specificLink = array_filter($links, fn($link) => $link->link === 'verifications');
-                    // $remainingLinks = array_filter($links, fn($link) => $link->link !== 'verifications');
-
-                    // Combine the specific link with the remaining links
-                    // $links = array_merge($specificLink, $remainingLinks);
                     foreach ($links as $link) {
                         if ($link->has_sub == 0) { ?>
-
-
                          <li><a href="<?= $link->link ?>" class="ai-icon" aria-expanded="false">
                                  <i class="<?= $link->link_icon ?>"></i>
                                  <span class="nav-text"><?= $link->link_name ?></span>
                              </a>
                          </li>
-
                      <?php } else { ?>
-
                          <li><a class="has-arrow ai-icon" href="javascript:void()" aria-expanded="false">
                                  <i class="<?= $link->link_icon ?>"></i>
                                  <span class="nav-text"><?= $link->link_name ?></span>
                              </a>
                              <ul aria-expanded="false">
-                                 <?php if (
-                                        $sub_links = $site_settings->sub_url_link(
-                                            $link->id,
-                                            $Auth->admin_role
-                                        )
-                                    ) {
+                                 <?php if ($sub_links = $site_settings->sub_url_link($link->id, $Auth->admin_role)) {
                                         foreach ($sub_links as $sub_link) { ?>
                                          <li><a href="../<?= $sub_link->sub_link ?>"><?= $sub_link->sub_link_name ?></a></li>
-                                 <?php }
-                                    } ?>
+                                 <?php } } ?>
                              </ul>
                          </li>
-
-
-
-
              <?php }
                     }
                 } ?>
 
-
-
-             <li><a href="<?php echo SITE_URL . 'easyfinder/dashboard/referral' ?>" class="ai-icon" aria-expanded="false">
+             <!-- ── Referral & Verify (all users) ─────────────────────── -->
+             <li><a href="<?= SITE_URL ?>easyfinder/dashboard/referral" class="ai-icon" aria-expanded="false">
                      <i class="flaticon-381-star-1"></i>
                      <span class="nav-text">Referral & Earnings</span>
                  </a>
              </li>
-             <li><a href="<?php echo SITE_URL . 'easyfinder/dashboard/verify-monnify' ?>" class="ai-icon" aria-expanded="false">
+             <li><a href="<?= SITE_URL ?>easyfinder/dashboard/verify-monnify" class="ai-icon" aria-expanded="false">
                      <i class="flaticon-381-check-circle"></i>
                      <span class="nav-text">Verify Payment</span>
                  </a>
              </li>
-             <?php if (in_array(1, explode(',', $Auth->admin_role)) || in_array(2, explode(',', $Auth->admin_role))): ?>
+
+             <!-- ── Admin-only section ─────────────────────────────────── -->
+             <?php
+             $adminRoles = array_filter(array_map('trim', explode(',', $Auth->admin_role ?? '')));
+             $isAdmin = in_array('1', $adminRoles) || in_array('2', $adminRoles);
+             if ($isAdmin):
+             ?>
+
+             <!-- Notifications -->
              <?php
              $_pn = @mysqli_connect("localhost","adiliqgs_adildata","adildata2026","adiliqgs_adildata");
              $_pnc = 0;
@@ -109,24 +88,16 @@
                      <li><a href="<?= SITE_URL ?>easyfinder/dashboard/admin-notification-settings"><i class="fa fa-cog mr-1"></i> API Settings</a></li>
                  </ul>
              </li>
-             <?php endif; ?>
-             <?php if (in_array(1, explode(',', $Auth->admin_role ?? ''))): ?>
-             <li><a href="<?php echo SITE_URL . 'easyfinder/dashboard/admin-monnify-users' ?>" class="ai-icon" aria-expanded="false">
+
+             <!-- Monnify Manager -->
+             <li><a href="<?= SITE_URL ?>easyfinder/dashboard/admin-monnify-users" class="ai-icon" aria-expanded="false">
                      <i class="flaticon-381-settings-2"></i>
                      <span class="nav-text">Monnify Manager</span>
                  </a>
              </li>
+
              <?php endif; ?>
-             <li><a href="<?php echo SITE_URL . 'easyfinder/dashboard/referral' ?>" class="ai-icon" aria-expanded="false">
-                     <i class="flaticon-381-star-1"></i>
-                     <span class="nav-text">Referral & Earnings</span>
-                 </a>
-             </li>
-             <li><a href="<?php echo SITE_URL . 'easyfinder/dashboard/verify-monnify' ?>" class="ai-icon" aria-expanded="false">
-                     <i class="flaticon-381-check-circle"></i>
-                     <span class="nav-text">Verify Payment</span>
-                 </a>
-             </li>
+
          </ul>
 
          <div class="add-menu-sidebar">
@@ -136,7 +107,6 @@
          </div>
          <div class="copyright">
              <p><strong>Azzeetech IT</strong> © 2021 All Rights Reserved</p>
-
          </div>
      </div>
  </div>
