@@ -2,9 +2,13 @@
 /**
  * Monnify Webhook Handler — Adildata
  * URL: https://api.adildata.com.ng/webhook.php
+ *
+ * FIX: $walletOk previously captured mysqli_affected_rows() AFTER the history
+ *      INSERT ran, so it reflected the INSERT result, not the wallet UPDATE.
+ *      Now we capture affected_rows immediately after the UPDATE query.
  */
 
-$raw_request = file_get_contents('php://input');
+$raw_request   = file_get_contents('php://input');
 $request_array = json_decode($raw_request, true);
 
 // ── File logging (always, before anything else) ───────────────────────────────
@@ -29,7 +33,7 @@ if (!$connect) {
 }
 
 // ── Load Monnify secret from DB settings ─────────────────────────────────────
-$sk_row = mysqli_query($connect, "SELECT setting_value FROM edutech_settings WHERE setting_key = 'MONNIFY_API_SECRET' LIMIT 1");
+$sk_row    = mysqli_query($connect, "SELECT setting_value FROM edutech_settings WHERE setting_key = 'MONNIFY_API_SECRET' LIMIT 1");
 $SECRET_KEY = '881J3RXH6Z6LDVJWG76P1YHW8VCECAE5';
 if ($sk_row && mysqli_num_rows($sk_row) > 0) {
     $sk_data = mysqli_fetch_assoc($sk_row);
@@ -73,45 +77,63 @@ if ($event_type === 'SUCCESSFUL_TRANSACTION' && !empty($email) && !empty($refere
     $emailSafe = mysqli_real_escape_string($connect, $email);
 
     // ── Get or create wallet record ───────────────────────────────────────────
-    $bal_row = mysqli_query($connect, "SELECT balance FROM wallet_tbl WHERE user_id = '$emailSafe' LIMIT 1");
+    $bal_row         = mysqli_query($connect, "SELECT balance FROM wallet_tbl WHERE user_id = '$emailSafe' LIMIT 1");
     $current_balance = 0;
     if ($bal_row && mysqli_num_rows($bal_row) > 0) {
-        $current_balance = intval(mysqli_fetch_assoc($bal_row)['balance']);
+        $current_balance = floatval(mysqli_fetch_assoc($bal_row)['balance']);
     } else {
         mysqli_query($connect, "INSERT INTO wallet_tbl(user_id, balance, status) VALUES('$emailSafe', 0, 1)");
     }
 
-    $new_balance = $current_balance + intval($amount_paid);
+    $amount_to_add = floatval($amount_paid);
+    $new_balance   = $current_balance + $amount_to_add;
 
+    // ── Update wallet balance ─────────────────────────────────────────────────
     $updateWallet = mysqli_query($connect,
-        "UPDATE wallet_tbl SET balance = balance + " . intval($amount_paid) . ", last_transanction = NOW() WHERE user_id = '$emailSafe'"
+        "UPDATE wallet_tbl SET balance = balance + $amount_to_add, last_transanction = NOW() WHERE user_id = '$emailSafe'"
     );
+    // IMPORTANT: capture affected_rows IMMEDIATELY after the UPDATE,
+    // before any other query runs (previously this was checked after insertHistory).
+    $walletAffected = ($updateWallet !== false) ? mysqli_affected_rows($connect) : -1;
+    $walletOk       = ($updateWallet !== false) && ($walletAffected >= 0);
 
+    // ── Insert wallet history ─────────────────────────────────────────────────
     $insertHistory = mysqli_query($connect,
-        "INSERT INTO wallet_history_tbl (trans_id, email, trans_amount, available_balance, wallet_status, trans_date, status, super_admin)
-         VALUES ('$refSafe', '$emailSafe', " . intval($amt_paid) . ", $new_balance, 'credit', NOW(), 1, 1)"
+        "INSERT INTO wallet_history_tbl
+         (trans_id, email, trans_amount, available_balance, wallet_status, trans_date, status, super_admin)
+         VALUES
+         ('$refSafe', '$emailSafe', $amount_to_add, $new_balance, 'credit', NOW(), 1, 1)"
     );
+    $historyOk = (bool)$insertHistory;
 
+    // ── Mark payment history ──────────────────────────────────────────────────
     mysqli_query($connect,
         "UPDATE payment_history_tbl SET status = 1, reason = 'monnify_success' WHERE trans_id = '$refSafe' LIMIT 1"
     );
 
-    $walletOk   = (bool)$updateWallet && mysqli_affected_rows($connect) > 0;
-    $historyOk  = (bool)$insertHistory;
-
     @file_put_contents($log_file,
-        date('Y-m-d H:i:s') . " | PROCESSED email=$email amt_paid=$amt_paid credited=$amount_paid wallet_ok=" . ($walletOk?'Y':'N') . " history_ok=" . ($historyOk?'Y':'N') . " new_balance=$new_balance\n",
+        date('Y-m-d H:i:s')
+        . " | PROCESSED email=$email amt_paid=$amt_paid credited=$amount_to_add"
+        . " wallet_ok=" . ($walletOk ? 'Y' : 'N')
+        . " wallet_affected=$walletAffected"
+        . " history_ok=" . ($historyOk ? 'Y' : 'N')
+        . " new_balance=$new_balance\n",
         FILE_APPEND | LOCK_EX);
 
     if ($walletOk && $historyOk) {
-        echo json_encode(['status' => 'OK']);
+        echo json_encode(['status' => 'OK', 'credited' => $amount_to_add, 'new_balance' => $new_balance]);
     } else {
         http_response_code(500);
-        echo json_encode(['status' => 'DB_WRITE_ERROR', 'wallet' => $walletOk, 'history' => $historyOk]);
+        echo json_encode([
+            'status'           => 'DB_WRITE_ERROR',
+            'wallet_ok'        => $walletOk,
+            'wallet_affected'  => $walletAffected,
+            'history_ok'       => $historyOk,
+        ]);
     }
 
 } elseif (in_array($event_type, ['FAILED_TRANSACTION', 'REVERSED_TRANSACTION', 'EXPIRED_TRANSACTION'])) {
-    $refSafe   = mysqli_real_escape_string($connect, $reference);
+    $refSafe = mysqli_real_escape_string($connect, $reference);
     mysqli_query($connect,
         "UPDATE payment_history_tbl SET status = 2, reason = '" . strtolower($event_type) . "' WHERE trans_id = '$refSafe' LIMIT 1"
     );

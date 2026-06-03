@@ -365,8 +365,7 @@ class UserController extends C_base
 
     function submitKYC($data)
     {
-        if ($data['nin'] == '' && $data['bvn'] == '') 
-        {
+        if (empty($data['nin']) && empty($data['bvn'])) {
             echo json_encode([
                 'success' => false,
                 'message' => 'BVN or NIN is required.'
@@ -375,32 +374,59 @@ class UserController extends C_base
         }
 
         $fields = [];
-    $params = ['email' => $data['email']];
+        $params = ['email' => $data['email']];
 
-    if (!empty($data['bvn'])) {
-        $fields[] = 'bvn = :bvn';
-        $params['bvn'] = $data['bvn'];
-    }
+        // FIX: Check for duplicate BVN — reject if already linked to another account
+        if (!empty($data['bvn'])) {
+            $existing = parent::$db->run_select(
+                'SELECT id FROM users_tbl WHERE bvn = :bvn AND email != :email LIMIT 1',
+                [':bvn' => $data['bvn'], ':email' => $data['email']]
+            );
+            if ($existing && count($existing) > 0) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'This BVN is already linked to another account.'
+                ]);
+                return;
+            }
+            $fields[]     = 'bvn = :bvn';
+            $params['bvn'] = $data['bvn'];
+        }
 
-    if (!empty($data['nin'])) {
-        $fields[] = 'nin = :nin';
-        $params['nin'] = $data['nin'];
-    }
+        // FIX: Check for duplicate NIN — reject if already linked to another account
+        if (!empty($data['nin'])) {
+            $existing = parent::$db->run_select(
+                'SELECT id FROM users_tbl WHERE nin = :nin AND email != :email LIMIT 1',
+                [':nin' => $data['nin'], ':email' => $data['email']]
+            );
+            if ($existing && count($existing) > 0) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'This NIN is already linked to another account.'
+                ]);
+                return;
+            }
+            $fields[]     = 'nin = :nin';
+            $params['nin'] = $data['nin'];
+        }
 
-    $sql = 'UPDATE users_tbl SET ' . implode(', ', $fields) . ' WHERE email = :email';
+        if (empty($fields)) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'No valid BVN or NIN provided.'
+            ]);
+            return;
+        }
 
-    if (
-        $this->data = parent::$db->run_insert(
-            $sql,
-            $params
-        )
-    ) {
-        echo json_encode([
-            'success' => true,
-            'message' => 'KYC updated successfully.'
-        ]);
-        return;
-    }
+        $sql = 'UPDATE users_tbl SET ' . implode(', ', $fields) . ' WHERE email = :email';
+
+        if ($this->data = parent::$db->run_insert($sql, $params)) {
+            echo json_encode([
+                'success' => true,
+                'message' => 'KYC updated successfully.'
+            ]);
+            return;
+        }
 
         echo json_encode([
             'success' => false,

@@ -37,13 +37,25 @@ function api_error($message, $code = 400) {
 }
 
 // ── Token verification ────────────────────────────────────────────────────────
+// FIX: Direct indexed lookup instead of fetching ALL users and bcrypt-comparing
+// each row — the old approach caused 30-60 s response times with many users.
+// Tokens are now stored as plain random hex strings so WHERE token=? is instant.
+// A bcrypt fallback handles legacy sessions until users re-login.
 function verify_token($conn, $incoming_token) {
     if (empty($incoming_token)) return null;
-    $q = mysqli_query($conn, "SELECT * FROM users_tbl WHERE status = 1 AND token IS NOT NULL AND token != ''");
-    while ($row = mysqli_fetch_assoc($q)) {
-        if (password_verify($incoming_token, $row['token'])) return $row;
-        // Also support plain token (legacy)
-        if ($incoming_token === $row['token']) return $row;
+
+    // Fast path: plain token direct lookup (O(1) with an index)
+    $ts = mysqli_real_escape_string($conn, $incoming_token);
+    $q  = mysqli_query($conn, "SELECT * FROM users_tbl WHERE token = '$ts' AND status = 1 LIMIT 1");
+    if ($q && mysqli_num_rows($q) > 0) return mysqli_fetch_assoc($q);
+
+    // Slow legacy fallback: bcrypt-hashed token — only for old sessions
+    // (Users who re-login will get a plain token and never hit this path again)
+    $q2 = mysqli_query($conn, "SELECT * FROM users_tbl WHERE token IS NOT NULL AND token != '' AND status = 1");
+    if ($q2) {
+        while ($row = mysqli_fetch_assoc($q2)) {
+            if (password_verify($incoming_token, $row['token'])) return $row;
+        }
     }
     return null;
 }
@@ -160,14 +172,17 @@ case 'login':
     $user = mysqli_fetch_assoc($r);
     if (!password_verify($password, $user['password'])) api_error('Invalid credentials', 401);
 
+    // FIX: Store plain random token — NOT bcrypt-hashed.
+    // The token is already secure (bin2hex of 32 random bytes = 256-bit entropy).
+    // Bcrypt-hashing it forces every auth check to do a full table scan + bcrypt
+    // compare on each row, which is the root cause of 30-60 s response times.
     $api_token = bin2hex(random_bytes(32));
-    $tokenHash = password_hash($api_token, PASSWORD_DEFAULT);
-    $ts = mysqli_real_escape_string($conn, $tokenHash);
+    $ts        = mysqli_real_escape_string($conn, $api_token);
     mysqli_query($conn, "UPDATE users_tbl SET token = '$ts' WHERE id = " . intval($user['id']));
 
-    // Get wallet balance
+    // Get wallet balance — use floatval so decimal kobo are not truncated
     $wq  = mysqli_query($conn, "SELECT balance FROM wallet_tbl WHERE user_id = '$em' LIMIT 1");
-    $bal = $wq && mysqli_num_rows($wq) > 0 ? intval(mysqli_fetch_assoc($wq)['balance']) : 0;
+    $bal = $wq && mysqli_num_rows($wq) > 0 ? floatval(mysqli_fetch_assoc($wq)['balance']) : 0;
 
     api_response([
         'token'        => $api_token,
@@ -217,7 +232,7 @@ case 'profile':
     $user = require_auth($conn);
     $em   = mysqli_real_escape_string($conn, $user['email']);
     $wq   = mysqli_query($conn, "SELECT balance FROM wallet_tbl WHERE user_id = '$em' LIMIT 1");
-    $bal  = $wq && mysqli_num_rows($wq) > 0 ? intval(mysqli_fetch_assoc($wq)['balance']) : 0;
+    $bal  = $wq && mysqli_num_rows($wq) > 0 ? floatval(mysqli_fetch_assoc($wq)['balance']) : 0;
     api_response([
         'id'             => $user['id'],
         'email'          => $user['email'],
@@ -240,7 +255,7 @@ case 'wallet':
     $user = require_auth($conn);
     $em   = mysqli_real_escape_string($conn, $user['email']);
     $wq   = mysqli_query($conn, "SELECT balance FROM wallet_tbl WHERE user_id = '$em' LIMIT 1");
-    $bal  = $wq && mysqli_num_rows($wq) > 0 ? intval(mysqli_fetch_assoc($wq)['balance']) : 0;
+    $bal  = $wq && mysqli_num_rows($wq) > 0 ? floatval(mysqli_fetch_assoc($wq)['balance']) : 0;
     api_response(['balance' => $bal, 'email' => $user['email']]);
     break;
 
@@ -434,11 +449,21 @@ case 'generate_monnify':
     $input_nin  = preg_replace('/\D/', '', trim($body_input['nin'] ?? $_POST['nin'] ?? ''));
     if (!empty($input_bvn) && strlen($input_bvn) === 11) {
         $bvns = mysqli_real_escape_string($conn, $input_bvn);
+        // FIX: Reject if this BVN is already linked to another account
+        $dup = mysqli_query($conn, "SELECT id FROM users_tbl WHERE bvn='$bvns' AND email != '$em' LIMIT 1");
+        if ($dup && mysqli_num_rows($dup) > 0) {
+            api_error('This BVN is already linked to another account', 409);
+        }
         mysqli_query($conn, "UPDATE users_tbl SET bvn='$bvns' WHERE email='$em'");
         $user['bvn'] = $input_bvn;
     }
     if (!empty($input_nin) && strlen($input_nin) === 11) {
         $nins = mysqli_real_escape_string($conn, $input_nin);
+        // FIX: Reject if this NIN is already linked to another account
+        $dup = mysqli_query($conn, "SELECT id FROM users_tbl WHERE nin='$nins' AND email != '$em' LIMIT 1");
+        if ($dup && mysqli_num_rows($dup) > 0) {
+            api_error('This NIN is already linked to another account', 409);
+        }
         mysqli_query($conn, "UPDATE users_tbl SET nin='$nins' WHERE email='$em'");
         $user['nin'] = $input_nin;
     }
@@ -777,8 +802,29 @@ case 'submit_kyc':
     if (empty($bvn) && empty($nin)) api_error('BVN or NIN is required');
     $em   = mysqli_real_escape_string($conn, $user['email']);
     $sets = [];
-    if (!empty($bvn) && strlen($bvn) === 11) { $sets[] = "bvn='" . mysqli_real_escape_string($conn, $bvn) . "'"; }
-    if (!empty($nin) && strlen($nin) === 11) { $sets[] = "nin='" . mysqli_real_escape_string($conn, $nin) . "'"; }
+
+    if (!empty($bvn)) {
+        if (strlen($bvn) !== 11) api_error('BVN must be exactly 11 digits');
+        $bvnSafe = mysqli_real_escape_string($conn, $bvn);
+        // FIX: Reject if this BVN is already linked to a DIFFERENT account
+        $dup = mysqli_query($conn, "SELECT id FROM users_tbl WHERE bvn='$bvnSafe' AND email != '$em' LIMIT 1");
+        if ($dup && mysqli_num_rows($dup) > 0) {
+            api_error('This BVN is already linked to another account', 409);
+        }
+        $sets[] = "bvn='$bvnSafe'";
+    }
+
+    if (!empty($nin)) {
+        if (strlen($nin) !== 11) api_error('NIN must be exactly 11 digits');
+        $ninSafe = mysqli_real_escape_string($conn, $nin);
+        // FIX: Reject if this NIN is already linked to a DIFFERENT account
+        $dup = mysqli_query($conn, "SELECT id FROM users_tbl WHERE nin='$ninSafe' AND email != '$em' LIMIT 1");
+        if ($dup && mysqli_num_rows($dup) > 0) {
+            api_error('This NIN is already linked to another account', 409);
+        }
+        $sets[] = "nin='$ninSafe'";
+    }
+
     if (empty($sets)) api_error('BVN and NIN must be 11 digits');
     mysqli_query($conn, "UPDATE users_tbl SET " . implode(', ', $sets) . " WHERE email='$em'");
     api_response(['message' => 'KYC submitted successfully']);
