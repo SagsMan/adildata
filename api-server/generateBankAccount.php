@@ -1,120 +1,146 @@
 <?php
+/**
+ * generateBankAccount.php — Monnify reserved account generator (web side).
+ * Replaces the old PaymentPoint integration.
+ *
+ * Usage: include this file, then call generateBankAccount($email, $name, $phone, $bvn)
+ * Returns: ['success' => bool, 'message' => string, 'details' => string]
+ *
+ * BVN is REQUIRED by Monnify in production. This function will fail without it.
+ */
 
-function generateBankAccount($email, $name, $phone){
-    include_once 'conn.php';
+function generateBankAccount($email, $name, $phone, $bvn = '') {
+    include_once __DIR__ . '/conn.php';
     global $conn;
-
-    $apiSecret = "1e5466700ff67b7c91e73ce36d2d0b630777c825e64438bc70c9b342a1e1afa6ff20b81c4b51bc7bf771c0e5e73666f2d089c145c5c5782ccd489290";
-    $apiKey = "ac82b8a0a46c6ff27bebb20960a70891525828a6";
-    $businessId = "51f60608cd7b92cdd95182ecb0fc4862ec0753fe";
-
-    $url = "https://api.paymentpoint.co/api/v1/createVirtualAccount";
 
     if (!$conn) {
         return ["success" => false, "message" => "DB Connection failed"];
     }
 
     $emailSafe = mysqli_real_escape_string($conn, $email);
-    $check = mysqli_query($conn, "SELECT acc_no, bank_name, acc_name, acc_no2, bank_name2, acc_name2 FROM users_tbl WHERE email = '$emailSafe' LIMIT 1");
+
+    // If user already has a Monnify account, skip
+    $check = mysqli_query($conn, "SELECT id, monnify_account_details FROM users_tbl WHERE email='$emailSafe' LIMIT 1");
     if (!$check || mysqli_num_rows($check) < 1) {
         return ["success" => false, "message" => "User not found"];
     }
+    $current = mysqli_fetch_assoc($check);
+    if (!empty($current['monnify_account_details'])) {
+        return ["success" => true, "message" => "already_has_account", "details" => $current['monnify_account_details']];
+    }
+    $userId = $current['id'];
 
-    $current = mysqli_fetch_array($check);
-    $hasAcc1 = !empty($current['acc_no']);
-    $hasAcc2 = !empty($current['acc_no2']);
-    if ($hasAcc1 && $hasAcc2) {
-        return ["success" => true, "message" => "already_has_two"];
+    // BVN is required by Monnify in production
+    if (empty($bvn)) {
+        // Try to fetch BVN from DB if not passed
+        $bvnQ  = mysqli_query($conn, "SELECT bvn FROM users_tbl WHERE email='$emailSafe' LIMIT 1");
+        $bvnRow = $bvnQ ? mysqli_fetch_assoc($bvnQ) : [];
+        $bvn   = $bvnRow['bvn'] ?? '';
+    }
+    if (empty($bvn)) {
+        return ["success" => false, "message" => "BVN is required to generate a Monnify virtual account"];
     }
 
-    // Normalize phone to 11 digits if shorter (API requires 11 digits)
-    $phoneDigits = preg_replace('/\D+/', '', (string)$phone);
-    if (strlen($phoneDigits) < 11) {
-        $padLength = 11 - strlen($phoneDigits);
-        $suffix = '';
-        for ($i = 0; $i < $padLength; $i++) {
-            $suffix .= (string)random_int(0, 9);
-        }
-        $phoneDigits .= $suffix;
-    } elseif (strlen($phoneDigits) > 11) {
-        $phoneDigits = substr($phoneDigits, 0, 11);
+    // Fetch Monnify credentials
+    $credQ = mysqli_query($conn, "SELECT setting_key, setting_value FROM edutech_settings WHERE setting_key LIKE 'MONNIFY_%'");
+    $keys  = [];
+    while ($r = mysqli_fetch_assoc($credQ)) $keys[$r['setting_key']] = $r['setting_value'];
+
+    $apiKey    = $keys['MONNIFY_API_KEY']      ?? '';
+    $apiSecret = $keys['MONNIFY_API_SECRET']   ?? '881J3RXH6Z6LDVJWG76P1YHW8VCECAE5';
+    $baseUrl   = rtrim($keys['MONNIFY_BASE_URL'] ?? 'https://api.monnify.com', '/');
+    $contract  = $keys['MONNIFY_API_CONTRACT'] ?? '';
+
+    if (empty($apiKey) || empty($contract)) {
+        return ["success" => false, "message" => "Monnify credentials not configured in settings"];
     }
 
-    $data = [
-        "email" => $email,
-        "name" => $name,
-        "phoneNumber" => $phoneDigits,
-        "bankCode" => ["20946", "20897"], // Palmpay + Opay
-        "businessId" => $businessId
-    ];
-    
-    $headers = [
-        "Authorization: Bearer $apiSecret",
-        "Content-Type: application/json",
-        "api-key: $apiKey"
-    ];
-
-    $curl = curl_init();
-
-    curl_setopt_array($curl, [
-        CURLOPT_URL => $url,
+    // Authenticate with Monnify
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL            => $baseUrl . '/api/v1/auth/login',
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => '',
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Basic ' . base64_encode("$apiKey:$apiSecret"),
+            'Content-Type: application/json',
+        ],
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode($data),
-        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_SSL_VERIFYPEER => false,
+    ]);
+    $authResp  = curl_exec($ch);
+    curl_close($ch);
+    $authData  = json_decode($authResp, true);
+    $authToken = $authData['responseBody']['accessToken'] ?? null;
+
+    if (!$authToken) {
+        return ["success" => false, "message" => "Monnify authentication failed"];
+    }
+
+    // Create reserved account
+    $accountRef = 'ADIL_' . intval($userId) . '_' . time();
+    $payload    = json_encode([
+        'accountReference'    => $accountRef,
+        'accountName'         => $name,
+        'currencyCode'        => 'NGN',
+        'contractCode'        => $contract,
+        'customerEmail'       => $email,
+        'customerName'        => $name,
+        'getAllAvailableBanks' => true,
+        'bvn'                 => $bvn,
     ]);
 
-    $response = curl_exec($curl);
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL            => $baseUrl . '/api/v2/bank-transfer/reserved-accounts',
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Bearer ' . $authToken,
+            'Content-Type: application/json',
+        ],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 30,
+        CURLOPT_SSL_VERIFYPEER => false,
+    ]);
+    $resp = curl_exec($ch);
+    $err  = curl_error($ch);
+    curl_close($ch);
 
-    if(curl_errno($curl)){
-        return ["success" => false, "message" => "Curl Error: " . curl_error($curl)];
+    if ($err) {
+        return ["success" => false, "message" => "cURL error: $err"];
     }
 
-    curl_close($curl);
-
-    $result = json_decode($response, true);
-    
-   
-
-    // check success
-    if (!isset($result['status']) || $result['status'] !== 'success') {
-        return ["success" => false, "message" => "API Error: " . $response];
+    $result = json_decode($resp, true);
+    if (empty($result['requestSuccessful'])) {
+        return ["success" => false, "message" => $result['responseMessage'] ?? 'Account creation failed', "raw" => $resp];
     }
 
-    $bankAccounts = $result['bankAccounts'] ?? [];
-    $account1 = $bankAccounts[0] ?? null;
-    $account2 = $bankAccounts[1] ?? null;
+    $body     = $result['responseBody'] ?? [];
+    $accounts = $body['accounts'] ?? [];
+    $accName  = $body['accountName'] ?? $name;
 
-    $updates = [];
-    if (!$hasAcc1 && $account1) {
-        $acc_no = mysqli_real_escape_string($conn, $account1['accountNumber']);
-        $bank_name = mysqli_real_escape_string($conn, $account1['bankName']);
-        $acc_name = mysqli_real_escape_string($conn, $account1['accountName']);
-        $updates[] = "acc_no = '$acc_no'";
-        $updates[] = "bank_name = '$bank_name'";
-        $updates[] = "acc_name = '$acc_name'";
+    $parts = [];
+    foreach ($accounts as $acct) {
+        $bn = $acct['bankName']      ?? '';
+        $an = $acct['accountNumber'] ?? '';
+        if ($bn && $an) {
+            $parts[] = "$bn - $an - $accName";
+        }
     }
 
-    if (!$hasAcc2 && $account2) {
-        $acc_no2 = mysqli_real_escape_string($conn, $account2['accountNumber']);
-        $bank_name2 = mysqli_real_escape_string($conn, $account2['bankName']);
-        $acc_name2 = mysqli_real_escape_string($conn, $account2['accountName']);
-        $updates[] = "acc_no2 = '$acc_no2'";
-        $updates[] = "bank_name2 = '$bank_name2'";
-        $updates[] = "acc_name2 = '$acc_name2'";
+    if (empty($parts)) {
+        return ["success" => false, "message" => "No accounts returned by Monnify"];
     }
 
-    if (empty($updates)) {
-        return ["success" => true, "message" => "no_update_needed"];
-    }
+    $detailsStr = implode(', ', $parts);
+    $ds         = mysqli_real_escape_string($conn, $detailsStr);
+    $updateOk   = mysqli_query($conn, "UPDATE users_tbl SET monnify_account_details='$ds' WHERE email='$emailSafe'");
 
-    $updateSql = "UPDATE users_tbl SET " . implode(", ", $updates) . " WHERE email = '$emailSafe'";
-    $update = mysqli_query($conn, $updateSql);
-
-    if ($update) {
-        return ["success" => true, "message" => "updated"];
+    if ($updateOk) {
+        return ["success" => true, "message" => "updated", "details" => $detailsStr];
     }
-    
     return ["success" => false, "message" => "DB Error: " . mysqli_error($conn)];
 }
 ?>
